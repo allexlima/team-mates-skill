@@ -193,8 +193,11 @@ team. Requires cmux; skipped under --inline.
 - Build-run worktrees are pre-trusted, so they no longer prompt. A folder you have
   never opened with Claude can still show a trust prompt the first time.
 - `.team/runs/<date>-<team>/tasks.md` tracks each role's status.
-- Run `team.sh status <team>` to see one frame: a summary line (`<team> · N/M reported ·
-  time`), a progress bar, and a table of ROLE · STATE · STEP · AGE. Each state is a symbol
+- Run `team.sh status <team>` to see one frame: a summary line (`<team> · 5/8 tasks ·
+  time`, or `N/M reported` when tasks.md has no task lines), a progress line with the
+  overall % and team ETA, and a table of the live teammates: ROLE · STATE · STEP · AGE.
+  Finished teammates fold into one `✓ N finished · K PRs` line below the table, followed
+  by `backlog: P pending · U unassigned` while tasks remain. Each state is a symbol
   plus a word, so colour is never the only cue; colour is off when output is not a terminal,
   `NO_COLOR` is set or `TERM=dumb`, and symbols fall back to ASCII in a non-UTF-8 locale.
   A `NEEDS YOU` block is pinned above the table only when a teammate is in one of the first
@@ -209,7 +212,9 @@ team. Requires cmux; skipped under --inline.
                  same, so look at its pane before messaging it
     working      Doing its work (a note says "report on disk" once it has reported)
     idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
-                 so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes)
+                 so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
+                 Exception: while a ready task has no owner it is pinned as
+                 "idle with work pending" — hand it that task.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
   State is read from the hooks cmux injects into each *live* teammate, not from its screen.
@@ -222,23 +227,26 @@ team. Requires cmux; skipped under --inline.
   In the pane each row is numbered: press that number to focus that teammate's pane, `r` to
   repaint, `q` to quit. Clicking a row does the same. Clicking captures the mouse, so
   click-drag no longer selects text in that pane (shift+drag still does); set
-  `TEAM_MONITOR_MOUSE=0` to keep the number keys and leave selection alone. A finished
-  teammate has no pane, so focusing it just says so. One-shot `team.sh status` prints no
-  numbers and takes no input.
+  `TEAM_MONITOR_MOUSE=0` to keep the number keys and leave selection alone. Only live
+  teammates get a number. One-shot `team.sh status` prints no numbers and takes no input.
   The pane closes itself a few seconds after the last teammate reaches `finished`, so a
   completed run does not leave a pane behind (`TEAM_MONITOR_AUTOCLOSE=0` keeps it open,
   `TEAM_MONITOR_CLOSE_GRACE` sets the delay). It only closes on that *transition*: opening
   the monitor on an already-finished run leaves it up.
-  The headline bar is the team's **average** self-reported progress (`~70%`), not the share
-  of teammates that have reported — 4 teammates at 80% is not "0% done". A reported or
-  finished teammate counts as 100. The hard `N/M reported` count stays next to it, and when
-  nobody reports a percentage the bar falls back to `N/M` and drops the `~`. The sidebar pill
-  and progress bar carry the same number as the pane.
-  A PROGRESS bar and an `~ETA` appear per row only when a teammate reports a percentage on
-  its status line, and only when the pane is at least 72 / 84 columns wide. Both are
-  **self-reported** — the teammate's own estimate, since no measured per-teammate progress
-  signal exists — so treat them as a rough indication, not a measurement. The ETA is a
-  linear extrapolation (`elapsed x (100 - pct) / pct`) of that estimate.
+  The headline % is **overall task progress**: done tasks in tasks.md, plus each open task's
+  share as its owner reports it on its status line (`T3: drafting · 40%` credits T3; with no
+  `T<n>:` prefix it credits the teammate's first open task). A `~` in front means
+  self-reported percentages went into it. The team ETA next to it is a linear extrapolation
+  (`run elapsed x (100 - pct) / pct`), shown from 5% on. The % and ETA never truncate; the
+  bar shrinks first. When tasks.md has no task lines the bar falls back to the teammates'
+  **average** self-reported progress (a reported or finished teammate counts as 100), and to
+  `N/M` with no `~` when nobody reports a percentage. The sidebar pill and progress bar carry
+  the same number as the pane.
+  A PROGRESS bar and an `~ETA` appear per row when a teammate reports a percentage on its
+  status line and the pane is wide enough to keep ROLE and STATE readable; STEP then drops
+  the repeated `· NN%`. All of these are **self-reported** — the teammate's own estimate,
+  since no measured per-teammate progress signal exists — so treat them as a rough
+  indication, not a measurement.
 - Say "shut down the team" to close all teammate panes/tabs (the run record stays;
   clean worktrees are removed, branches and PRs stay).
 

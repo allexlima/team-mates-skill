@@ -70,7 +70,8 @@ want='fx · 1/3 reported · @@CLOCK@@
     ROLE    STATE            STEP                                    AGE
   · core    ◐ drafting       drafting report                          3m
   · status  ◐ investigating  investigating facts                      5m
-  · docs    ✓ finished       -                                        0m'
+
+  ✓ 1 finished'
 [ "$healthy" = "$want" ] \
   && pass "G1: all-healthy compact frame matches golden (summary, bar, table, no alert block)" \
   || { fail "G1: all-healthy compact frame matches golden"; diff <(printf '%s\n' "$want") <(printf '%s\n' "$healthy") | sed 's/^/        /' | head -12; }
@@ -156,6 +157,9 @@ for i, l in enumerate(lines):
         if "r_" + st in t:
             k = t.index("r_" + st)
             out[st] = t[k-1] if i < hdr else t[k+1]   # alert rows: glyph before role; table rows: after
+for l in lines:   # finished teammates fold into one line led by their glyph
+    if l.strip().endswith("1 finished"):
+        out["FINISHED"] = l.split()[0]
 print(" ".join(f"{k}={v}" for k, v in sorted(out.items())))
 PYG
 )
@@ -164,6 +168,63 @@ n_distinct=$(tr ' ' '\n' <<<"$glyphs" | sed 's/.*=//' | sort -u | wc -l | tr -d 
 { [ "$n_states" = 8 ] && [ "$n_distinct" = 8 ]; } \
   && pass "G8: all 8 states have distinct ASCII glyphs (WAITING vs MODEL_GONE no longer collide) (decision 64)" \
   || fail "G8: ASCII glyph collision" "states=$n_states distinct=$n_distinct :: $glyphs"
+
+# === M*: overall task progress, team ETA, folded finished rows, backlog line ===
+# @summary record (from _st_summary): done total pct(-1 none) est(0|1) elapsed_min eta_min(-1) pending unassigned prs
+summ() { printf '@summary\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@"; }
+f=$( { summ 5 8 62 0 23 14 3 0 0; rec core m1-core WORKING investigating "T6: coding" 1 "-"; } | frame m1 100 0 0 )
+l1=$(sed -n 1p <<<"$f"); l2=$(sed -n 2p <<<"$f")
+{ grep -q '5/8 tasks' <<<"$l1" && grep -q '62%' <<<"$l2" && grep -q 'ETA ~14m' <<<"$l2"; } \
+  && pass "M1: header shows done/total tasks; the bar line shows overall % and the team ETA" \
+  || fail "M1: headline" "$f"
+
+f=$( { summ 5 8 62 0 23 14 3 0 0; rec core m2-core WORKING investigating "T6: coding" 1 "-"; } | frame m2 24 0 0 )
+top=$(sed -n '1,2p' <<<"$f"); over=$(sed -n '2,$p' <<<"$f" | while IFS= read -r l; do [ "$(dwidth "$l")" -gt 24 ] && echo "$l"; done)
+{ grep -q '62%' <<<"$top" && grep -q 'ETA ~14m' <<<"$top" && [ -z "$over" ]; } \
+  && pass "M2: at 24 columns the % and ETA still show in full and no line overflows" \
+  || fail "M2: narrow headline" "over=[$over] $f"
+
+f=$( { summ 2 3 66 0 10 5 1 0 0; rec fa m3-fa FINISHED reported - 1 "-"; rec fb m3-fb FINISHED reported - 1 "-"; rec live m3-live WORKING investigating "T3: x" 1 "-"; } | frame m3 100 0 0 )
+{ [ "$(grep -c '2 finished' <<<"$f")" = 1 ] && ! grep -qE '^ +. fa |^ +. fb ' <<<"$f" && grep -qE ' live ' <<<"$f"; } \
+  && pass "M3: finished teammates fold into one '2 finished' line instead of a row each" \
+  || fail "M3: folded finished" "$f"
+
+f=$( { summ 0 0 -1 0 0 -1 0 0 0; rec a m4-a WORKING spawned - 0 "-"; } | frame m4 100 0 0 2>&1 )
+{ ! grep -q 'ETA' <<<"$f" && grep -q 'reported' <<<"$f" && ! grep -qi 'traceback\|error' <<<"$f"; } \
+  && pass "M4: no tasks and no % reported: legacy header, no ETA, no crash" \
+  || fail "M4: empty summary" "$f"
+
+f=$( { summ 1 3 33 0 5 10 2 1 0; rec idl m5-idl IDLE investigating "T1: done" 3 "-"; } | frame m5 100 0 0 )
+grep -q 'idle with work pending' <<<"$f" \
+  && pass "M5: an idle teammate while an unassigned task is ready is flagged under NEEDS YOU" \
+  || fail "M5: idle with work pending" "$f"
+
+f=$( { summ 2 3 66 0 10 5 1 0 2; rec fa m6-fa FINISHED reported - 1 "-"; rec fb m6-fb FINISHED reported - 1 "-"; rec live m6-live WORKING investigating "x" 1 "-"; } | frame m6 100 0 0 )
+grep -q '2 finished · 2 PRs' <<<"$f" && pass "M6: the folded line counts PRs from reports" || fail "M6: PR count" "$f"
+
+f=$( { summ 0 3 10 1 5 45 3 0 0; rec a m9-a WORKING investigating "T1: x · 30%" 1 "-"; } | frame m9 100 0 0 )
+grep -q 'backlog: 3 pending · 0 unassigned' <<<"$f" && pass "M9: backlog line shows pending and unassigned tasks" || fail "M9: backlog line" "$f"
+
+f=$( { summ 0 2 20 1 5 20 2 0 0; printf 'a\tm10-a\tWORKING\tinvestigating\tT1: wiring the API · 40%%\t1\t-\t40\t5\n'; } | frame m10 100 0 0 )
+{ grep -q 'T1: wiring the API' <<<"$f" && ! grep -q 'API · 40%' <<<"$f" && grep -q ' 40%' <<<"$f"; } \
+  && pass "M10: STEP drops the trailing '· NN%' that the PROGRESS column already shows" \
+  || fail "M10: step percent dedupe" "$f"
+
+# _st_summary end to end: status prefix crediting, legacy task files
+summary_of() { # <tasks.md content> <records...> -> @summary line
+  local d; d=$(mktemp -d "$W/sum.XXXX"); mkdir -p "$d/reports"; printf '%s' "$1" > "$d/tasks.md"; shift
+  printf '%s\n' "$@" | bash -c '. "$1"; _st_summary "$2"' _ "$LIB" "$d" 2>&1
+}
+r7=$(printf 'w\tm7-w\tWORKING\tinvestigating\tdrafting · 40%%\t1\t-\t40\t10')
+got=$(summary_of "$(printf -- '- [ ] T1 m7-w: a\n- [ ] T2 m7-w: b\n')" "$r7")
+[ "$(cut -f2-5 <<<"$got")" = "$(printf '0\t2\t20\t1')" ] \
+  && pass "M7: a status line without a T<n>: prefix credits its % to the teammate's first open task" \
+  || fail "M7: unprefixed credit" "got=[$got]"
+r8=$(printf 'a\tm8-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')
+got=$(summary_of "$(printf -- '- [x] m8-a: a\n- [ ] m8-b: b\n- [ ] m8-c: c\n')" "$r8")
+[ "$(cut -f2-4 <<<"$got")" = "$(printf '1\t3\t33')" ] \
+  && pass "M8: a legacy one-line-per-role tasks.md gives done/total and an overall %" \
+  || fail "M8: legacy tasks" "got=[$got]"
 
 # ═══ End-to-end fixtures ═══
 G="$W/repo"; mkdir -p "$G"; git -C "$G" init -q

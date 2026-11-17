@@ -409,6 +409,72 @@ except Exception:
 }
 
 # ---------------------------------------------------------------------------
+# _st_summary <run-dir>: teammate records on stdin -> one @summary record, the single
+# owner of the overall % and team ETA (the pane and the sidebar both read it):
+#   @summary done total pct est elapsed_min eta_min pending unassigned prs
+# pct = (done tasks + each open task's owner-reported %) / total tasks; -1 when tasks.md
+# has no task lines (consumers then fall back to the teammate average). est=1 when any
+# self-reported % went into it. eta = elapsed x (100 - pct) / pct, only for 5 <= pct < 100.
+# A teammate's % goes to the task its status line names ("T3: ..."), else its first open task.
+# unassigned = open tasks whose needs are done and whose owner is `any` or not live.
+# ---------------------------------------------------------------------------
+read -r -d '' _ST_SUMMARY_PY <<'PY' || true
+import glob, os, re, sys
+run = sys.argv[1]
+recs = {}
+for line in sys.stdin:
+    f = line.rstrip('\n').split('\t')
+    if len(f) < 9 or f[0].startswith('@'):
+        continue
+    def num(x):
+        try: return int(x)
+        except ValueError: return -1
+    recs[f[1]] = dict(state=f[2], ms=f[3], step=f[4], pct=num(f[7]), elapsed=num(f[8]))
+tasks = []   # [id, owner, done, needs]
+try:
+    lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
+except OSError:
+    lines = []
+for n, l in enumerate(lines, 1):
+    m = re.match(r'\s*- \[([ xX])\] (T\d+) (\S+): (.*)', l)
+    if m:
+        nd = re.search(r'needs:\s*(.*)$', m.group(4))
+        tasks.append([m.group(2), m.group(3), m.group(1) != ' ',
+                      re.findall(r'T\d+', nd.group(1)) if nd else []])
+        continue
+    m = re.match(r'\s*- \[([ xX])\] (\S+):', l)
+    if m:
+        tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', []])
+done_ids = {t[0] for t in tasks if t[2]}
+total, done = len(tasks), len(done_ids)
+credit, est, used = 0, 0, set()
+for title, r in recs.items():
+    if r['state'] == 'FINISHED' or r['ms'] == 'reported' or r['pct'] < 0:
+        continue
+    mine = [t for t in tasks if not t[2] and t[1] in (title, 'any')]
+    m = re.match(r'\s*(T\d+):', r['step'])
+    pick = [t for t in mine if m and t[0] == m.group(1)] or [t for t in mine if t[1] == title]
+    if pick and pick[0][0] not in used:
+        used.add(pick[0][0]); credit += r['pct'] * 10; est = 1
+pct = (done * 1000 + credit) // (total * 10) if total else -1
+pct = min(pct, 100)
+elapsed = max([r['elapsed'] for r in recs.values()] + [0])
+eta = elapsed * (100 - pct) // pct if 5 <= pct < 100 and elapsed > 0 else -1
+live = {t for t, r in recs.items() if r['state'] != 'FINISHED'}
+pending = [t for t in tasks if not t[2]]
+unassigned = sum(1 for t in pending if all(d in done_ids for d in t[3])
+                 and (t[1] == 'any' or t[1] not in live))
+prs = set()
+for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
+    try:
+        prs |= set(re.findall(r'https://[^\s)>\]]+/pull/\d+', open(rp, encoding='utf-8', errors='replace').read()))
+    except OSError:
+        pass
+print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs)])))
+PY
+_st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}"; }
+
+# ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
 # The python3 formatter measures display width (unicodedata.east_asian_width),
 # truncates on grapheme-cluster boundaries and paints the shared palette. Its
@@ -416,7 +482,7 @@ except Exception:
 # ---------------------------------------------------------------------------
 
 read -r -d '' _ST_FRAME_PY <<'PY' || true
-import os, sys, unicodedata
+import os, re, sys, unicodedata
 
 # argv: team width color(0|1) ascii(0|1); stdin: TSV records
 # role  title  state  milestone  step  age_min(-1 = none)  note
@@ -494,10 +560,18 @@ def asciify(s):
     return ''.join(c if ord(c) < 128 else '?' for c in s)
 
 recs = []
+S = None   # @summary from _st_summary: the one source of overall % and team ETA
 for line in sys.stdin:
     if ascii_:
         line = asciify(line)
     f = line.rstrip('\n').split('\t')
+    if f[0] == '@summary' and len(f) >= 10:
+        try:
+            S = dict(zip(('done', 'total', 'pct', 'est', 'elapsed', 'eta', 'pending',
+                          'unassigned', 'prs'), map(int, f[1:10])))
+        except ValueError:
+            S = None
+        continue
     if len(f) < 7 or f[2] not in STATES:
         continue
     def num(i):
@@ -533,11 +607,12 @@ done = sum(1 for r in recs if r['ms'] == 'reported' or r['state'] == 'FINISHED')
 sep = ' - ' if ascii_ else ' · '
 # The clock (8 cols once bash substitutes @@CLOCK@@) is reserved first; the team
 # name gives way, and this line is exempt from clip() so the placeholder stays whole.
-head = f'{team}{sep}{done}/{total} reported{sep}'
+tasks_mode = bool(S) and S['total'] > 0 and S['pct'] >= 0
+head = (f"{team}{sep}{S['done']}/{S['total']} tasks{sep}" if tasks_mode
+        else f'{team}{sep}{done}/{total} reported{sep}')
 if dw(head) > width - 8:
     head = fit(head, width - 9).rstrip() + ' '
 out = [head + '@@CLOCK@@']
-barw = max(5, min(20, width - 8))
 # The bar prefers the team's AVERAGE self-reported progress over the share of
 # teammates that have reported: 4 teammates at 80% is not "0% done". A reported
 # or finished teammate counts as 100. Falls back to reported/total when nobody
@@ -546,15 +621,30 @@ eff = [100 if (r['ms'] == 'reported' or r['state'] == 'FINISHED') else r['pct']
        for r in recs if (r['ms'] == 'reported' or r['state'] == 'FINISHED' or r['pct'] >= 0)]
 use_avg = any(r['pct'] >= 0 for r in recs) and bool(eff)
 pct = (sum(eff) // len(eff)) if use_avg else ((100 * done // total) if total else 0)
+suffix = ''
+if tasks_mode:
+    # Overall task progress wins: done tasks plus each open task's owner-reported %.
+    pct, use_avg = S['pct'], bool(S['est'])
+    if S['eta'] >= 0:
+        suffix = f"{sep}ETA ~{age(S['eta'])}"
+label = ('  ~' if use_avg else '  ') + f'{pct}%' + suffix
+# The % and ETA never truncate: the bar gives way first, down to 3 cells.
+barw = max(3, min(20, width - dw(label)))
 filled = barw * pct // 100
 full, empty = ('#', '-') if ascii_ else ('█', '░')
 # '~' marks a self-reported estimate, the same convention the ETA column uses.
-out.append(paint(full * filled, 'done') + paint(empty * (barw - filled), 'dim')
-           + ('  ~' if use_avg else '  ') + f'{pct}%')
+out.append(paint(full * filled, 'done') + paint(empty * (barw - filled), 'dim') + label)
 out.append('')
 
-alerts = [r for r in recs if STATES[r['state']][3] == 'alert']
-rest = [r for r in recs if STATES[r['state']][3] != 'alert']
+# An idle teammate while a ready task has no owner is the waste the user cares about.
+if S and S['unassigned'] > 0:
+    for r in recs:
+        if r['state'] == 'IDLE':
+            r['note'], r['alert'] = 'idle with work pending', True
+alerts = [r for r in recs if STATES[r['state']][3] == 'alert' or r.get('alert')]
+# Finished teammates have no pane; they fold into one line under the live rows.
+finished = [r for r in recs if r['state'] == 'FINISHED']
+rest = [r for r in recs if r not in alerts and r['state'] != 'FINISHED']
 alerts.sort(key=lambda r: ORDER.index(r['state']))
 rest.sort(key=lambda r: ORDER.index(r['state']))
 
@@ -573,7 +663,7 @@ if alerts:
     arolew = max(3, min(rolew, width - (4 + 2 + 2 + wordw + 2 + agew)))
     for r in alerts:
         s, word, role = sym(r['state'])
-        detail = r['note'] or (r['step'] if r['step'] != '-' else '') or HINT[r['state']]
+        detail = r['note'] or (r['step'] if r['step'] != '-' else '') or HINT.get(r['state'], '')
         msg = f'{word}{sep}{detail}'
         msgw = width - (4 + 2 + arolew + 2 + 2 + agew)
         if dw(msg) > msgw:
@@ -618,6 +708,8 @@ if rest:
     for r, (s, word) in zip(rest, labels):
         role = STATES[r['state']][3]
         step = r['step']
+        if progw and r['pct'] >= 0:   # the PROGRESS column already shows the self-reported %
+            step = re.sub(r'\s*[·-]\s*\d{1,3}%\s*$', '', step) or '-'
         if r['note']:
             step = r['note'] if step == '-' else f"{r['note']}{sep}{step}"
         line = (f"[{r['key']}] " if keys else '  ' + ('-' if ascii_ else '·') + ' ')
@@ -628,6 +720,16 @@ if rest:
         line += (bar_of(r) + '  ' if progw else '')
         line += (eta_of(r).rjust(etaw) + '  ' if etaw else '') + r['age'].rjust(agew)
         out.append(line.rstrip())
+
+if finished or (S and S['pending']):
+    out.append('')
+if finished:
+    fl = ('+' if ascii_ else '✓') + f' {len(finished)} finished'
+    if S and S['prs']:
+        fl += f"{sep}{S['prs']} PR" + ('' if S['prs'] == 1 else 's')
+    out.append('  ' + paint(fl, 'done'))
+if S and S['pending']:
+    out.append('  ' + paint(f"backlog: {S['pending']} pending{sep}{S['unassigned']} unassigned", 'dim'))
 
 def clip(line):
     # Last guard: no line wider than the pane. Escape sequences cost no width;
@@ -720,7 +822,12 @@ _st_collect() {
       leadpane="${lp%% *}"
     fi
   fi
-  _st_records "$reg" "$run" "$leadpane" "$team"
+  # Registry col 7 (the run dir spawn recorded) wins over the newest-run fallback.
+  local rd; rd=$(awk 'NF>=7 && $7!="-" {print $7; exit}' "$reg" 2>/dev/null || true)
+  [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
+  local recs; recs=$(_st_records "$reg" "$run" "$leadpane" "$team")
+  [ -z "$recs" ] || printf '%s\n' "$recs"
+  printf '%s\n' "$recs" | _st_summary "${run:--}" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -796,8 +903,8 @@ sub_status() {
 
     # all finished? (non-empty record set, every row FINISHED)
     local allfin=
-    if [ -n "$recs" ] && ! printf '%s\n' "$recs" | awk -F'\t' 'NF>=3 && $3!="FINISHED"{found=1} END{exit !found}'; then
-      printf '%s\n' "$recs" | grep -q . && allfin=1
+    if [ -n "$recs" ] && ! printf '%s\n' "$recs" | awk -F'\t' 'NF>=3 && $1!~/^@/ && $3!="FINISHED"{found=1} END{exit !found}'; then
+      printf '%s\n' "$recs" | grep -qv '^@' && allfin=1
     fi
     if [ -n "$allfin" ] && [ -z "$was_all_fin" ] && [ "$autoclose" = 1 ] \
        && [ -n "${_ST_SAW_UNFINISHED:-}" ]; then
@@ -1003,8 +1110,12 @@ _st_sync_apply() {
   # means at least one real self-report, which is what switches the bar over.
   local pctsum=0 pctn=0 selfn=0
   local role title state ms _step _age _note pct
+  local s_done= s_total= s_pct=-1 s_est=0
   while IFS=$'\t' read -r role title state ms _step _age _note pct _; do
     [ -n "$title" ] || continue
+    if [ "$role" = @summary ]; then
+      s_done=$title s_total=$state s_pct=$ms s_est=$_step; continue
+    fi
     total=$((total + 1))
     { [ "$ms" = reported ] || [ "$state" = FINISHED ]; } && reported=$((reported + 1))
     [ "$ms" != spawned ] && started=1
@@ -1043,6 +1154,12 @@ _st_sync_apply() {
   # '~' marks the average as self-reported; the hard N/M fact stays alongside it.
   local pill="$phase · $reported/$total reported"
   [ -n "$avg" ] && pill="$phase · ~$avg% · $reported/$total reported"
+  # With a backlog, overall task progress (the pane's headline number) wins.
+  if [ "${s_total:-0}" -gt 0 ] 2>/dev/null && [ "$s_pct" -ge 0 ] 2>/dev/null; then
+    local t=; [ "$s_est" = 1 ] && t='~'
+    pill="$phase · $t$s_pct% · $s_done/$s_total tasks"
+    frac=$(python3 -c "print(f'{$s_pct/100:.2f}')" 2>/dev/null) || frac="0.0"
+  fi
 
   # Update sidebar (never fatal; use per-team key and explicit workspace)
   cmux set-status "$key" "$pill" --icon sparkle --color "$pill_color" \
@@ -1064,7 +1181,7 @@ _st_sync_apply() {
 
   local cur_rows="" prev pstate pms msg lvl
   while IFS=$'\t' read -r role title state ms _step _age _note; do
-    [ -n "$title" ] || continue
+    [ -n "$title" ] && [ "$role" != @summary ] || continue
     cur_rows="${cur_rows}${title}"$'\t'"${state}"$'\t'"${ms}"$'\n'
     prev=$(awk -F'\t' -v t="$title" '$1==t {print; exit}' <<<"$prev_rows" 2>/dev/null || true)
     pstate=$(awk -F'\t' '{print $2}' <<<"$prev"); pms=$(awk -F'\t' '{print $3}' <<<"$prev")
