@@ -1047,6 +1047,37 @@ surface:13	$TM2-worker"
 }
 
 # ══════════════════════════════════════════════════════════════════
+# perm-1/perm-2 - non-haiku teammates get a broad local allowlist; haiku tier is unchanged
+# ══════════════════════════════════════════════════════════════════
+_allow_of() {  # the --allowedTools value in the last logged spawn command, shell quoting undone
+  grep -oE -- '--allowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--allowedTools //; s/\\//g' || true
+}
+{
+  R="$W/perm"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm"; _mkrun "$RUNP"
+  pf="$RUNP/prompts/s.md"; printf 'prompt\n' > "$pf"; cp "$pf" "$RUNP/prompts/h.md"
+  TM="perm$$"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" s "$pf" sonnet) >/dev/null 2>&1 || true
+  a=$(_allow_of); miss=
+  for e in Read Glob Grep Edit Write Agent SendMessage ListAgents 'Bash(git status:*)' 'Bash(git diff:*)' \
+      'Bash(git log:*)' 'Bash(git add:*)' 'Bash(git commit:*)' 'Bash(git switch:*)' 'Bash(git stash:*)' \
+      'Bash(bash ~/.claude/skills/team/team.sh facts-lint:*)' 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__*'; do
+    case ",$a," in *",$e,"*) ;; *) miss+=" $e" ;; esac
+  done
+  bad=; for e in 'git push' 'gh ' 'npm install' 'pip install' 'rm -rf'; do case $a in *"$e"*) bad+=" $e" ;; esac; done
+  [ -n "$a" ] && [ -z "$miss" ] && [ -z "$bad" ] \
+    && pass "perm-1: sonnet teammate gets the broad local allowlist, nothing that publishes or destroys" \
+    || fail "perm-1: broad allowlist" "missing:$miss forbidden:$bad got=$a"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" h "$RUNP/prompts/h.md" system.ai.claude-haiku-4-5) >/dev/null 2>&1 || true
+  a=$(_allow_of)
+  want="Read,Glob,Grep,SendMessage,ListAgents,Edit(/$RUNP/reports/h.md),Edit(/$RUNP/tasks.md),Edit(/$RUNP/status/h.txt),Bash(ls:*),Bash(wc:*),Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash $(dirname "$TEAM_SH")/team.sh facts-lint:*),Bash(git status:*),Bash(cmux notify --title:*)"
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [ "$a" = "$want" ] && pass "perm-2: haiku-tier allowlist is unchanged" \
+    || fail "perm-2: haiku allowlist" "got=$a want=$want"
+}
+
+# ══════════════════════════════════════════════════════════════════
 # doccheck passes after all changes
 # ══════════════════════════════════════════════════════════════════
 {

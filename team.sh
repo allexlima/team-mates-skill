@@ -95,7 +95,8 @@
 # prompt file's prompts/ dir, which a haiku-tier prompt must live in). Haiku tier is refused with
 # --worktree. With no [model], the tier is that of the default model the teammate starts on
 # (ANTHROPIC_MODEL, else "model" in managed-settings, else ~/.claude/settings.json), so a haiku-tier
-# default gets the same treatment. Every other tier uses TEAM_PERMISSION_MODE (default auto).
+# default gets the same treatment. Every other tier uses TEAM_PERMISSION_MODE (default auto) plus the
+# _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP).
 # Spawned tabs/panes are recorded in $TEAM_REG_DIR/team-<team>.tabs (default /tmp; tests point it at a
 # scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
 # "cmux <ref> <layout:pane|tab|dash> <title> <model|-> <subagent-model|-> <run-dir|-> <project-root>
@@ -105,6 +106,18 @@
 # <project-root> and count as live. Rows older than rev4 have no <project-root> (reap derives it from a <run-dir> under <root>/.team/runs/, else
 # treats it as unknown). Paths with whitespace never match a project root, so such rows are never reaped.
 set -euo pipefail
+# Pre-approved for every non-haiku teammate (HELP.md quotes this list), so routine local work never
+# stops on a permission prompt. Nothing here publishes or destroys: pushes, gh writes, installs,
+# deploys and rm are left off and go through the TL (or the lead). Under auto mode that is a
+# convention, not a block: an unlisted command can still run if auto mode allows it.
+_team_allow="Read,Glob,Grep,Edit,Write,Agent,SendMessage,ListAgents"
+_team_allow+=",Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*)"
+_team_allow+=",Bash(git commit:*),Bash(git branch:*),Bash(git switch:*),Bash(git stash:*)"
+_team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(rg:*)"
+_team_allow+=",Bash(bash -n:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(make test:*),Bash(npm test:*)"
+_team_allow+=",Bash(npm run:*),Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
+_team_allow+=",Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/team.sh status:*)"
+_team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
 subs="init lead-title reap gate-init clean close finish models pick-model role roles role-pull role-promote status monitor sync facts-lint doccheck show list spawn"
@@ -845,6 +858,7 @@ if [ "$tier" = haiku ]; then
   echo "note: $title is haiku-tier (${model:-$dmodel}): --permission-mode dontAsk + read-only allowlist" >&2
 else
   pmode=${TEAM_PERMISSION_MODE:-auto}
+  allow=$_team_allow
 fi
 
 # Subagents launched without a model default to haiku and can overflow its context, so
