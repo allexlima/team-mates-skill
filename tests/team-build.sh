@@ -1030,6 +1030,23 @@ surface:13	$TM2-worker"
 }
 
 # ══════════════════════════════════════════════════════════════════
+# branch-1 — spawn --worktree --branch <name> uses that branch; a bad name exits 2
+# ══════════════════════════════════════════════════════════════════
+{
+  R="$W/br1"; _mkgit "$R"
+  pf="$W/p_br1.md"; printf 'prompt\n' > "$pf"
+  TM="br1$$"
+  _reset_logs
+  out=$(cd "$R" && bash "$TEAM_SH" spawn --worktree --branch feat/x "$TM" a "$pf" sonnet 2>&1) && rc=0 || rc=$?
+  br=$(git -C "$R/.team/worktrees/$TM-a" branch --show-current 2>/dev/null || true)
+  out2=$(cd "$R" && bash "$TEAM_SH" spawn --worktree --branch 'bad..name' "$TM" b "$pf" sonnet 2>&1) && rc2=0 || rc2=$?
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [ "$rc" = 0 ] && [ "$br" = feat/x ] && [ "$rc2" = 2 ] \
+    && pass "branch-1: --branch names the worktree branch; invalid name exits 2" \
+    || fail "branch-1: --branch" "rc=$rc br=$br rc2=$rc2 out=${out:0:160} out2=${out2:0:160}"
+}
+
+# ══════════════════════════════════════════════════════════════════
 # doccheck passes after all changes
 # ══════════════════════════════════════════════════════════════════
 {

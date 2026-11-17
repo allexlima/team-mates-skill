@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run each teammate as an interactive `claude` session in its own cmux pane or tab.
-#   team.sh spawn [--tabs] [--worktree] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]
+#   team.sh spawn [--tabs] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]
 #                         --resume: continue the session id recorded for <team>-<role> (normally a finished row)
 #                         in its recorded cwd, with <prompt-file> as the new instruction; exit 3 when no session
 #                         is recorded or its dir is gone (then spawn without --resume)
@@ -69,7 +69,7 @@
 # TEAM_MODELS_FILE: read the model picker (and the default "model") from this JSON file instead of
 # managed-settings/settings.json.
 # --worktree: the teammate works in its own git worktree .team/worktrees/<team>-<role>
-# on branch team/<team>-<role> (created from HEAD, or reused if it survived a `clean`), like a
+# on branch team/<team>-<role> or --branch <name> (created from HEAD, or reused if it survived a `clean`), like a
 # separate person. Needs at least one commit. Each new worktree is pre-accepted in ~/.claude.json
 # so the workspace-trust prompt does not appear in every pane (a worktree is its own git
 # top-level, so it cannot inherit it).
@@ -785,14 +785,15 @@ if [ "$sub" = show ] || [ "$sub" = list ]; then
   exit 0
 fi
 
-layout=pane worktree= caveman=1 replace= resume=
+layout=pane worktree= caveman=1 replace= resume= branch=
 while :; do case ${1:-} in
   --resume) resume=1; shift ;;
   --tmux) echo "--tmux was removed in rev4: /team is cmux-only (run it from a cmux pane)" >&2; exit 2 ;;
   --tabs) layout=tab; shift ;; --worktree) worktree=1; shift ;;
+  --branch) branch=${2:?--branch needs a name}; shift 2 ;;
   --replace) replace=1; shift ;; --no-caveman) caveman=; shift ;; *) break ;;
 esac; done
-spawn_usage="usage: team.sh spawn [--tabs] [--worktree] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]"
+spawn_usage="usage: team.sh spawn [--tabs] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]"
 team=${1:?$spawn_usage} role=${2:?$spawn_usage} pfile=${3:?$spawn_usage} model=${4:-}
 [ $# -le 4 ] || { echo "$spawn_usage (flags go before <team>; got extra: ${*:5})" >&2; exit 2; }
 
@@ -920,16 +921,18 @@ dir=$PWD
 if [ -n "$resume" ]; then
   dir=$rcwd
 elif [ -n "$worktree" ]; then
+  branch=${branch:-team/$team-$role}  # --branch: a project naming convention (e.g. feat/<topic>); default keeps old runs reusable
+  git check-ref-format --branch "$branch" >/dev/null || { echo "invalid branch name: $branch" >&2; exit 2; }
   dir="$root/.team/worktrees/$team-$role"
   if [ ! -d "$dir" ]; then
     # `clean` keeps the branch, so a respawn reuses it instead of failing on `-b`.
-    if git -C "$root" show-ref -q --verify "refs/heads/team/$team-$role"; then
-      git -C "$root" worktree add -q "$dir" "team/$team-$role"
+    if git -C "$root" show-ref -q --verify "refs/heads/$branch"; then
+      git -C "$root" worktree add -q "$dir" "$branch"
     else
-      git -C "$root" worktree add -q -b "team/$team-$role" "$dir" HEAD
+      git -C "$root" worktree add -q -b "$branch" "$dir" HEAD
     fi
   fi
-  echo "worktree $dir (branch team/$team-$role)"
+  echo "worktree $dir (branch $branch)"
   # A worktree is its own git top-level, so it never inherits the repo's workspace
   # trust and `claude` would raise the trust prompt in every pane. Pre-accept this
   # one path. Best-effort: a failure here only means the prompt comes back.
