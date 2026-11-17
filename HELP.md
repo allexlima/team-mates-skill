@@ -274,12 +274,14 @@ side's best evidence) · Dropped (refuted) · Next steps.
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
   `_team_allow` list in team.sh): Read, Glob, Grep, Edit, Write, Agent, SendMessage,
-  ListAgents; Bash for `git status/diff/log/show/add/commit/branch/switch/stash`, `ls`, `cat`,
-  `head`, `tail`, `wc`, `find`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`,
-  `make test`, `npm test`, `npm run`, `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh
-  `facts-lint`/`status`; and the Chrome DevTools MCP tools. Pushes, `gh` writes, installs,
-  deploys and destructive commands are left off and go through the TL (or the lead). That is
-  a convention, not a hard block: under auto mode an unlisted command can still run.
+  ListAgents; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
+  `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
+  `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
+  DevTools MCP tools. A rule approves every flag of its command, so commands with a
+  destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
+  as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
+  lead). That is a convention, not a hard block: under auto mode an unlisted command can
+  still run.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on

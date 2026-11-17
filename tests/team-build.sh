@@ -1061,11 +1061,14 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   (cd "$R" && bash "$TEAM_SH" spawn "$TM" s "$pf" sonnet) >/dev/null 2>&1 || true
   a=$(_allow_of); miss=
   for e in Read Glob Grep Edit Write Agent SendMessage ListAgents 'Bash(git status:*)' 'Bash(git diff:*)' \
-      'Bash(git log:*)' 'Bash(git add:*)' 'Bash(git commit:*)' 'Bash(git switch:*)' 'Bash(git stash:*)' \
+      'Bash(git log:*)' 'Bash(git add:*)' 'Bash(git commit:*)' \
       'Bash(bash ~/.claude/skills/team/team.sh facts-lint:*)' 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__*'; do
     case ",$a," in *",$e,"*) ;; *) miss+=" $e" ;; esac
   done
-  bad=; for e in 'git push' 'gh ' 'npm install' 'pip install' 'rm -rf'; do case $a in *"$e"*) bad+=" $e" ;; esac; done
+  # Prefix rules also approve every flag: these have destructive forms (stash drop, branch -D,
+  # switch --discard-changes, find -delete, any npm script), so none may be listed.
+  bad=; for e in 'git push' 'gh ' 'npm install' 'pip install' 'rm -rf' 'git stash' 'git branch' 'git switch' \
+      'Bash(find:' 'npm run'; do case $a in *"$e"*) bad+=" $e" ;; esac; done
   [ -n "$a" ] && [ -z "$miss" ] && [ -z "$bad" ] \
     && pass "perm-1: sonnet teammate gets the broad local allowlist, nothing that publishes or destroys" \
     || fail "perm-1: broad allowlist" "missing:$miss forbidden:$bad got=$a"

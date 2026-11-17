@@ -65,7 +65,8 @@ the slowest teammate sets the pace for the whole team.
 - **Hand risky commands to the TL.** Local work (read, build, test, lint, local git) is
   pre-approved. Pushes, `gh` writes, package installs, deploys and anything destructive are
   not yours to run: SendMessage the tech-lead (or the lead, when there is no TL) the exact
-  command and why, then carry on with other work.
+  command and why, then carry on with other work. Never pass `--no-verify` to `git commit`:
+  it skips the hooks that scan for secrets.
 - **Writing tools.** Run prose a person will read (reports to the user, PR descriptions, docs)
   through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
   diagram with `diagram-design`. On a build run, commit and open PRs the way

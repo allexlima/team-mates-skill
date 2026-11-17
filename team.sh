@@ -114,15 +114,17 @@
 # treats it as unknown). Paths with whitespace never match a project root, so such rows are never reaped.
 set -euo pipefail
 # Pre-approved for every non-haiku teammate (HELP.md quotes this list), so routine local work never
-# stops on a permission prompt. Nothing here publishes or destroys: pushes, gh writes, installs,
-# deploys and rm are left off and go through the TL (or the lead). Under auto mode that is a
-# convention, not a block: an unlisted command can still run if auto mode allows it.
+# stops on a permission prompt. A prefix rule approves every flag of its command, so a command with
+# a destructive form (git stash drop, git branch -D, git switch --discard-changes, find -delete,
+# any npm script) is left off, as are pushes, gh writes, installs, deploys and rm: those go through
+# the TL (or the lead). Under auto mode that is a convention, not a block: an unlisted command can
+# still run if auto mode allows it.
 _team_allow="Read,Glob,Grep,Edit,Write,Agent,SendMessage,ListAgents"
 _team_allow+=",Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*)"
-_team_allow+=",Bash(git commit:*),Bash(git branch:*),Bash(git switch:*),Bash(git stash:*)"
-_team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(rg:*)"
+_team_allow+=",Bash(git commit:*)"
+_team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*)"
 _team_allow+=",Bash(bash -n:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(make test:*),Bash(npm test:*)"
-_team_allow+=",Bash(npm run:*),Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
+_team_allow+=",Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
 _team_allow+=",Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/team.sh status:*)"
 _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 # Dispatch: anything not listed is refused here, because an unknown word would
@@ -271,7 +273,8 @@ sys.exit(1 if isinstance(c, dict) and not c.get("pane_ref") else 0)' ;;
       # tmux 3.7 answers a missing pane with an empty line and exit 0, so only an answer
       # naming this very pane means alive; empty output or "no server" means gone.
       if out=$(_tmux display -p -t "$2" '#{pane_id}' 2>&1); then [ "$out" = "$2" ]; return; fi
-      case $out in *"can't find"*|*"no server"*) return 1 ;; esac; return 0 ;;
+      # "error connecting": the server's socket is gone, so are its panes.
+      case $out in *"can't find"*|*"no server"*|*"error connecting"*) return 1 ;; esac; return 0 ;;
     *) return 0 ;;   # unknown backend: never prune blind
   esac
 }
