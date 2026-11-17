@@ -59,6 +59,17 @@ the slowest teammate sets the pace for the whole team.
   - Clean up before reporting: `close_page` every page you opened.
   - If the Chrome DevTools tools are not available to you (haiku-tier teammates don't get them),
     say "UI checks not done: no browser tools" in your report instead of switching tools.
+- **Stay on the backlog.** Your work is the `T<n>` lines with your name (or `any`) in `tasks.md`.
+  Finish one, report it in its own `## T<n>` section with its own `PARALLELISM:` line, and expect
+  the next. If you're blocked on one task and another of yours is ready, say so and switch.
+- **Hand risky commands to the TL.** Local work (read, build, test, lint, local git) is
+  pre-approved. Pushes, `gh` writes, package installs, deploys and anything destructive are
+  not yours to run: SendMessage the tech-lead (or the lead, when there is no TL) the exact
+  command and why, then carry on with other work.
+- **Writing tools.** Run prose a person will read (reports to the user, PR descriptions, docs)
+  through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
+  diagram with `diagram-design`. On a build run, commit and open PRs the way
+  `git-practices.md` (next to these rules) says.
 - **Send questions to the lead, not your own pane.** When you need the user's input, a
   decision, or sign-off on an approach, do NOT use AskUserQuestion or wait silently in your
   pane — the user is not watching it. SendMessage the lead a message whose first line is
@@ -71,9 +82,9 @@ the slowest teammate sets the pace for the whole team.
   your worktree has uncommitted changes, and untracked files count. Commit your work and commit
   or delete scratch files first, or your own pane cannot be closed.
 - **Notify when reporting or sending NEEDS INPUT.** Order for a report: write the report file,
-  tick your line in `tasks.md`, run `cmux notify`, and make the SendMessage to the lead your
-  **last** act — the lead finishes (closes) your pane on receiving it, so anything after it may
-  never run. Report: `cmux notify --title "<team>-<role>" --body "report ready" --desktop false`
+  tick the task's line in `tasks.md`, run `cmux notify`, and make the SendMessage to the lead your
+  **last** act — the lead may finish (close) your pane on receiving it, so anything after it may
+  never run. If the lead or TL answers with another task id instead, start on it right away. Report: `cmux notify --title "<team>-<role>" --body "report ready" --desktop false`
   (badge without a macOS banner; best-effort, cmux hooks can override it). Question:
   `cmux notify --title "<team>-<role>" --subtitle "<team>-<role>" --body "NEEDS INPUT: <one-line summary>"`
   (keeps the banner). Do not rely on the ring surviving your pane. Skip silently if cmux is not

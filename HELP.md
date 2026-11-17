@@ -84,9 +84,18 @@ forces one model everywhere; a haiku-tier id puts every role in dontAsk and is r
     Needs: no-mistakes (https://github.com/kunchenguid/no-mistakes) and an `origin`
     remote; without them the gate is skipped and commits stay local.
 
+## Team shape
+For anything beyond a very basic task the lead proposes a tech-lead (opus), who owns the
+backlog, assigns tasks, reviews and merges; and a product-manager (sonnet) when scope or
+acceptance is fuzzy. You approve or drop them with the roster. `tasks.md` is a backlog with
+more tasks than teammates, and a teammate that reports gets the next fitting task in the same
+session instead of closing. On build runs the lead asks once per run who merges the PRs (the
+TL with `gh`, or you).
+
 ## Every teammate
 - Opens in a two-column grid right of the lead, so panes stay readable as the team grows.
-- Its pane closes when it has reported and the lead has verified the report, so the grid
+- Its pane closes when it has reported, the lead has verified the report and no fitting
+  task is left for it in the backlog, so the grid
   shows only who is working and the finished session frees its memory. Nothing is lost: the
   report is on disk, and the lead resumes the session (or starts a fresh one that reads the
   report) if a later round needs that teammate. Finishing is refused unless the report is
