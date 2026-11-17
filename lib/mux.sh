@@ -81,7 +81,7 @@ _mux_close() {
   local err
   case $1 in
     tmux) err=$(_tmux kill-pane -t "$2" 2>&1 >/dev/null) && err=
-          case $err in *"can't find"*|*"no server"*) err= ;; esac ;;
+          case $err in *"can't find"*|*"no server"*|*"error connecting"*) err= ;; esac ;;
     cmux) err=$(cmux close-surface --surface "$2" --force 2>&1 >/dev/null) && err=
           case $err in *not_found*) err= ;; esac ;;
     *) err="unknown backend $1" ;;
@@ -90,7 +90,10 @@ _mux_close() {
 }
 
 _mux_titles() {
-  if command -v cmux >/dev/null 2>&1 && [ "$(cmux ping 2>/dev/null)" = PONG ]; then
+  # cmux installed but not answering: its rows' state is unknown, so fail rather than let a
+  # caller read them as gone and prune them blind. Not installed: no cmux surface can be live.
+  if command -v cmux >/dev/null 2>&1; then
+    [ "$(cmux ping 2>/dev/null)" = PONG ] || return 1
     _surface_titles || return 1
   fi
   if command -v tmux >/dev/null 2>&1; then

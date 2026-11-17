@@ -31,6 +31,8 @@ case "$1" in
   split-window|new-window) printf '%%%d\n' $((n + 10)) ;;
   display|display-message)
     t=; f=; while [ $# -gt 0 ]; do case $1 in -t) t=$2; shift ;; -p) ;; *) f=$1 ;; esac; shift; done
+    # Like real tmux when its socket is gone (server exited)
+    [ -n "${TMUX_NOSOCKET:-}" ] && { echo "error connecting to /tmp/tmux-0/default (No such file or directory)" >&2; exit 1; }
     # Like real tmux 3.7: a missing pane answers an empty line with exit 0.
     for g in ${TMUX_GONE_PANES:-}; do [ "$g" = "$t" ] && { echo; exit 0; }; done
     case $f in
@@ -50,7 +52,7 @@ cat > "$W/bin/cmux" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CMUX_LOG"
 case "$1" in
-  ping) echo PONG ;; --version) echo "cmux 0.65.0 stub" ;;
+  ping) echo "${CMUX_PING:-PONG}" ;; --version) echo "cmux 0.65.0 stub" ;;
   identify) echo '{"caller":{"pane_ref":"pane-stub","surface_ref":"surface:1"}}' ;;
   tree) echo '{"workspaces":[{"ref":"workspace:1","surfaces":[{"ref":"surface:5","title":"'"${CMUX_T5:-x}"'"}]}]}' ;;
   close-surface) echo OK ;;
@@ -137,6 +139,23 @@ mrow=$(awk '$3=="dash"' "$(REG x3)")
 { [ $rc = 0 ] && [[ $mrow == "tmux %"*" dash x3-monitor "* ]] && grep -qE '^split-window -d -v .*TEAM_MUX=tmux .*status --watch' "$TMUX_LOG"; } \
   && pass "X10: monitor opens a tmux pane running status --watch and records a tmux dash row" \
   || fail "X10: tmux monitor" "rc=$rc o=$o row=[$mrow] log=$(cat "$TMUX_LOG")"
+
+# X11: cmux rows are never pruned blind when cmux does not answer (lead under tmux)
+reg11=$(REG x11); row11=$(printf 'cmux surface:5 pane x11-c - - %s %s live 1 %s' "$RUN" "$R" "$R")
+echo "$row11" > "$reg11"; : > "$CMUX_LOG"
+o1=$(cd "$R" && env CMUX_PING=nope bash "$TEAM_SH" close x11 2>&1); r1=$?
+k1=$(cat "$reg11" 2>/dev/null)
+o2=$(cd "$R" && env CMUX_PING=nope bash "$TEAM_SH" reap --yes 2>&1); r2=$?
+k2=$(cat "$reg11" 2>/dev/null)
+{ [ $r1 != 0 ] && [ "$k1" = "$row11" ] && [ $r2 != 0 ] && [ "$k2" = "$row11" ] && ! grep -q close-surface "$CMUX_LOG"; } \
+  && pass "X11: close and reap keep cmux rows (exit non-zero) when cmux does not answer" \
+  || fail "X11: blind prune" "r1=$r1 r2=$r2 o1=$o1 o2=$o2 reg=$(cat "$reg11" 2>&1)"
+
+# X12: a tmux server that is gone (socket missing) reads as dead, not working
+reg12=$(REG x12); printf 'tmux %%91 pane x12-w - - %s %s live 1 %s\n' "$RUN" "$R" "$R" > "$reg12"
+out=$(cd "$R" && env TEAM_COLS=100 TMUX_NOSOCKET=1 bash "$TEAM_SH" status x12 2>&1)
+grep -qE ' w .*dead' <<<"$out" && pass "X12: tmux 'error connecting' (server gone) reads as dead" \
+  || fail "X12: dead tmux server" "$out"
 
 # X8: no backend
 o=$(cd "$R" && env -u TMUX -u TMUX_PANE -u TEAM_MUX PATH="$W/realbin:/usr/bin:/bin" bash "$TEAM_SH" spawn x8 a "$RUN/prompts/p.md" sonnet 2>&1); rc=$?
