@@ -191,6 +191,18 @@ if grep -q 'finished' <<<"$out" && ! grep -qi 'dead' <<<"$out"; then
   pass "E1: finished teammate (marker, closed surface) renders 'finished' and never 'dead' (decisions 8, 41)"
 else fail "E1: finished renders finished, not dead" "$out"; fi
 
+# === B1: a reused teammate (report on disk, T1 ticked, T2 open) is working on T2, not reported ===
+RUNB="$W/runb"; mkdir -p "$RUNB/reports" "$RUNB/status"
+printf 'REPORT\nPARALLELISM: none\n' > "$RUNB/reports/w.md"
+printf -- '- [x] T1 b1-w: a\n- [ ] T2 b1-w: b\n' > "$RUNB/tasks.md"
+printf 'T2: reading code · 10%%\n' > "$RUNB/status/w.txt"
+printf 'cmux surface:120 pane b1-w - - %s %s live 11111111-2222-3333-4444-555555555555 %s\n' "$RUNB" "$G" "$G" > "$TEAM_REG_DIR/team-b1.tabs"
+out=$(status_out b1)
+r=$(grep -E ' w ' <<<"$out" | head -1)
+if [ -n "$r" ] && ! grep -q 'report on disk' <<<"$out" && ! grep -q '1/1 reported' <<<"$out"; then
+  pass "B1: report on disk + an open T2 task reads as working on T2, not reported"
+else fail "B1: reused teammate not reported" "$out"; fi
+
 # ═══ E2 — no report + closed surface + no marker renders dead ═══
 { reg_row cmux surface:102 e2-gone live; } > "$TEAM_REG_DIR/team-e2.tabs"
 out=$(status_out e2 CMUX_GONE_REFS="surface:102")

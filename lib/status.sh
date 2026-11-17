@@ -16,6 +16,7 @@
 #   _alive <b> <r>     returns 0 if surface/pane exists (fallback defined below)
 #   _require_cmux [ws] exits 3 if cmux absent/unhealthy; ws also checks CMUX_*IDs
 #   _lock <file>       acquire lock; EXIT trap set for cleanup
+#   _tasks_state <tasks.md> <title>  prints done | "open T<n>" | none
 #
 # Registry row format (team.sh, 11 cols):
 #   backend ref layout title model submodel rundir root state session-id cwd
@@ -179,8 +180,13 @@ _st_row() {
     ms=investigating
     grep -qi 'draft' "$stf" 2>/dev/null && ms=drafting
   fi
-  if [ "$ms" != reported ] && [ -n "$effective_run" ] && [ -f "$effective_run/tasks.md" ]; then
-    grep -qF -- "- [x] $title:" "$effective_run/tasks.md" 2>/dev/null && ms=reported
+  # A teammate reused for another backlog task (team.sh _tasks_state "open T<n>") is not reported
+  # even with an earlier task's report on disk; a ticked line with no report still counts.
+  if [ -n "$effective_run" ] && [ -f "$effective_run/tasks.md" ]; then
+    case $(_tasks_state "$effective_run/tasks.md" "$title") in
+      open\ *) [ "$ms" = reported ] && ms=investigating ;;
+      done) ms=reported ;;
+    esac
   fi
 
   # ------ STEP (last line of status file; _st_frame truncates by display width)

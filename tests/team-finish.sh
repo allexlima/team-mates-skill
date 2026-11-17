@@ -329,6 +329,36 @@ out=$(tm env CMUX_NOTFOUND_REFS="surface:96" bash "$TEAM_SH" show "$T" b 2>&1); 
 out=$(tm bash "$TEAM_SH" park "$T" b 2>&1); rc=$?
 [ $rc = 2 ] && pass "F18: 'team.sh park' is an unknown subcommand (exit 2) — removed in rev5 (decision 10)" || fail "F18: park removed" "rc=$rc out=$out"
 
+# === F30-F33: multi-task backlog per teammate (T<n> task lines) ===
+fixture f30; row surface:40 w; report w
+printf -- '- [x] T1 %s-w: a\n- [ ] T2 %s-w: b\n' "$T" "$T" > "$RUN/tasks.md"
+TREE="surface:40	$T-w"; out=$(fin w); rc=$?
+{ [ $rc = 2 ] && grep -q 'open task T2' <<<"$out" && [ "$(col9 w)" = live ]; } \
+  && pass "F30: finish refuses while the teammate still owns an open backlog task" \
+  || fail "F30: open task refused" "rc=$rc out=$out"
+
+fixture f31; row surface:41 w; report w
+printf -- '- [x] T1 %s-w: a\n- [x] T2 %s-w: b\n- [ ] T3 %s-other: c\n' "$T" "$T" "$T" > "$RUN/tasks.md"
+TREE="surface:41	$T-w"; out=$(fin w); rc=$?
+{ [ $rc = 0 ] && [ "$(col9 w)" = finished ]; } \
+  && pass "F31: finish succeeds when every T<n> task the teammate owns is ticked" \
+  || fail "F31: all tasks ticked" "rc=$rc out=$out"
+
+fixture f32; row surface:42 w; report w; tick w
+TREE="surface:42	$T-w"; out=$(fin w); rc=$?
+{ [ $rc = 0 ] && [ "$(col9 w)" = finished ]; } \
+  && pass "F32: a legacy '- [x] <team>-<role>:' line still satisfies finish" \
+  || fail "F32: legacy tick" "rc=$rc out=$out"
+
+fixture f33; row surface:43 w; printf '# Report\n' > "$RUN/reports/w.md"
+echo "$(wc -c < "$RUN/reports/w.md" | tr -d ' ') 0" > "$TEAM_REG_DIR/team-$T-w.round"
+printf '## T1\nFINDINGS: x\nPARALLELISM: 2 agents\n## T2\nFINDINGS: y\nPARALLELISM: none\n' >> "$RUN/reports/w.md"
+printf -- '- [x] T1 %s-w: a\n- [x] T2 %s-w: b\n' "$T" "$T" > "$RUN/tasks.md"
+TREE="surface:43	$T-w"; out=$(fin w); rc=$?
+{ [ $rc = 0 ] && [ "$(col9 w)" = finished ]; } \
+  && pass "F33: a teammate reused for a second task finishes against its spawn baseline" \
+  || fail "F33: reused teammate finish" "rc=$rc out=$out"
+
 echo; echo "team-finish: $passes passed, $fails failed"
 [ "$fails" = 0 ] || exit 1
 echo "all passed ($passes cases)"

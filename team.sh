@@ -23,7 +23,8 @@
 #   team.sh finish <team> <role> -> after the lead received a teammate's report: mark its row finished (session id
 #                                  and cwd kept), then close its pane. exit 2 refused, nothing changed: the report did
 #                                  not grow since spawn or gained no new PARALLELISM: line, tasks.md lacks
-#                                  "- [x] <team>-<role>:", or its --worktree has uncommitted changes; exit 3 not
+#                                  "- [x] <team>-<role>:" (or, for backlog lines "- [ ] T<n> <team>-<role>: ...",
+#                                  one is still open), or its --worktree has uncommitted changes; exit 3 not
 #                                  recorded; exit 1 the close failed (row stays finished; re-run to retry)
 #   team.sh show <team> <role>  -> bring a teammate's pane to the front and focus it (a --tabs teammate is first
 #                                  moved out of your pane into its own); exit 3 finished, gone or not recorded,
@@ -293,6 +294,19 @@ _finished() { [ "$(awk '{print $9}' <<<"$1")" = finished ]; }
 # A report's last mandatory section header (plain, bold or heading markdown); `finish` counts these.
 # No `>`: a blockquoted PARALLELISM: is a peer's report being quoted, not this teammate's trailer.
 _trailer='^[#*_ -]*PARALLELISM:'
+# Task state of one teammate in a tasks.md: "done" (a legacy "- [x] <title>:" line, or >=1 ticked
+# "- [x] T<n> <title>:" backlog task and none open), "open T<n>" (first open backlog task it owns),
+# or "none" (nothing ticked for it yet). Backlog lines are "- [ ] T<n> <title>|any: <scope> ...".
+_tasks_state() {
+  awk -v t="$2" '
+    { l=$0; sub(/^[ \t]+/, "", l) }
+    l ~ /^- \[[xX]\] / && substr(l, 7, length(t)+1) == t":" { legacy=1; next }
+    l ~ /^- \[[ xX]\] T[0-9]+ / {
+      split(substr(l, 7), w, " "); if (w[2] != t":") next
+      if (substr(l, 4, 1) == " ") { if (!open) open=w[1] } else done=1
+    }
+    END { if (open) print "open " open; else if (legacy || done) print "done"; else print "none" }' "$1" 2>/dev/null || echo none
+}
 # Project root of a row (col 7 run dir, col 8 root), as a physical path, or nothing when unknown.
 # Rows older than rev4 have no root: derive it from a run dir under <root>/.team/runs/.
 _row_root() {
@@ -668,8 +682,12 @@ if [ "$sub" = finish ]; then
       echo "finish: refused: $rep did not grow since $title was spawned (recorded $bb bytes, now $size): no new report this round" >&2; exit 2; }
     [ "$np" -gt "$bn" ] || {
       echo "finish: refused: $rep has no new PARALLELISM: section this round ($bn at spawn, $np now): report incomplete or still being written" >&2; exit 2; }
-    grep -qF -e "- [x] $title:" -e "- [X] $title:" "$rd/tasks.md" 2>/dev/null || {
-      echo "finish: refused: $rd/tasks.md has no '- [x] $title:' line" >&2; exit 2; }
+    ts=$(_tasks_state "$rd/tasks.md" "$title")
+    case $ts in
+      done) ;;
+      open\ *) echo "finish: refused: $title still owns open task ${ts#open } in $rd/tasks.md; hand it that task or tick it first" >&2; exit 2 ;;
+      *) echo "finish: refused: $rd/tasks.md has no '- [x] $title:' line (or ticked T<n> task)" >&2; exit 2 ;;
+    esac
     case $cwd in
       "$(_root)"/.team/worktrees/*)
         # Fail closed: a git status that cannot run is treated as "maybe dirty".
