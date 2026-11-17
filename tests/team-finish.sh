@@ -281,30 +281,19 @@ TREE="surface:85	$T-b" out=$(tm env CMUX_TREE_SURFACES="surface:85	$T-b" bash "$
   && pass "F15c: close drops finished rows without a pane, closes live ones, removes the registry and .round sidecars (decision 59)" \
   || fail "F15c: close" "rc=$rc reg=$(ls "$REG" 2>&1) round=$(ls "$TEAM_REG_DIR/team-$T-a.round" 2>&1) out=$out"
 
-# ═══ F20: browser surfaces a teammate recorded are closed with it (teammate-rules.md cmux browser) ═══
-fixture f20; row surface:31 w; report w; tick w; mkdir -p "$RUN/browser"
-printf 'surface:32\nsurface:33\nsurface:34\n' > "$RUN/browser/w.txt"   # 32 browser, 33 reused by a terminal, 34 gone
+# ═══ F21: finish/close no longer manage browser surfaces (teammates use Chrome DevTools MCP) ═══
+fixture f21; row surface:31 w; report w; tick w; mkdir -p "$RUN/browser"; echo surface:32 > "$RUN/browser/w.txt"
 TREE="surface:31	$T-w
-surface:32	Some Page	browser
-surface:33	other-teammate	terminal"; out=$(fin w); rc=$?
-{ [ $rc = 0 ] && grep -q 'close-surface --surface surface:32 --force' "$CMUX_LOG" \
-  && ! grep -q 'close-surface --surface surface:33' "$CMUX_LOG" && ! grep -q 'close-surface --surface surface:34' "$CMUX_LOG" \
-  && [ ! -e "$RUN/browser/w.txt" ]; } \
-  && pass "F20: finish closes the teammate's recorded browser surfaces, skips a ref that is no longer a browser, removes the list" \
-  || fail "F20: finish closes browsers" "rc=$rc out=$out log=$(cat "$CMUX_LOG")"
+surface:32	Some Page	browser"; out=$(fin w); rc=$?
+{ [ $rc = 0 ] && ! grep -q 'close-surface --surface surface:32' "$CMUX_LOG" && grep -qx surface:32 "$RUN/browser/w.txt"; } \
+  && pass "F21: finish leaves cmux browser surfaces and any old browser list alone" \
+  || fail "F21: finish ignores browsers" "rc=$rc out=$out log=$(cat "$CMUX_LOG")"
 
-fixture f20b; row surface:35 w; report w; tick w; mkdir -p "$RUN/browser"; echo surface:36 > "$RUN/browser/w.txt"
-TREE="surface:35	$T-w
-surface:36	Page	browser"; CLOSEFAIL=1; out=$(fin w); rc=$?
-{ [ "$(col9 w)" = finished ] && grep -qx surface:36 "$RUN/browser/w.txt" && grep -q 'could not close browser surface:36' <<<"$out"; } \
-  && pass "F20b: a browser that fails to close warns and stays listed for the next finish/close to retry" \
-  || fail "F20b: browser close failure kept" "rc=$rc out=$out list=$(cat "$RUN/browser/w.txt" 2>&1)"
-
-fixture f20c; row surface:37 a finished; mkdir -p "$RUN/browser"; echo surface:38 > "$RUN/browser/a.txt"
+fixture f21b; row surface:37 a finished; mkdir -p "$RUN/browser"; echo surface:38 > "$RUN/browser/a.txt"
 out=$(tm env CMUX_TREE_SURFACES="surface:38	Page	browser" bash "$TEAM_SH" close "$T" 2>&1); rc=$?
-{ [ $rc = 0 ] && grep -q 'close-surface --surface surface:38 --force' "$CMUX_LOG" && [ ! -e "$RUN/browser/a.txt" ]; } \
-  && pass "F20c: close also closes browsers left listed by a finished teammate" \
-  || fail "F20c: close closes browsers" "rc=$rc out=$out"
+{ [ $rc = 0 ] && ! grep -q 'close-surface --surface surface:38' "$CMUX_LOG"; } \
+  && pass "F21b: close leaves cmux browser surfaces alone" \
+  || fail "F21b: close ignores browsers" "rc=$rc out=$out"
 
 # ═══ F16-F17: list words and show (decision 10) ═══
 fixture f16; row surface:91 a finished; row surface:92 b live; row surface:93 c live; row surface:94 d live pane

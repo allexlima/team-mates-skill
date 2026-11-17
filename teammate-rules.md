@@ -37,36 +37,24 @@ the slowest teammate sets the pace for the whole team.
   no measured progress signal available, so this is *your* estimate: judge it against the
   whole task you were given, not the step you are on, and do not jump to 90% because the
   current step is nearly done. Use 100% only once your report is written.
-- **Do web frontend / UI QA, review, and tests in the cmux integrated browser.** Whenever your
-  work needs a rendered page (checking a UI change, reproducing a frontend bug, clicking
-  through a flow, capturing visual evidence), drive it with `cmux browser`, not
-  Playwright, Chrome DevTools MCP, or an external browser. Reference:
-  https://cmux.com/docs/browser-automation (`cmux browser --help` for exact flags).
-  - Open your own surface: `cmux browser open <url>` prints `OK surface=surface:N …`. It opens
-    in your workspace without taking focus. Pass that `surface:N` on **every** later call
-    (`cmux browser surface:N <subcommand>`) and never drive a surface you did not open.
-    Record every surface you open (and every tab below) right away:
-    `mkdir -p <run>/browser && echo surface:N >> <run>/browser/<role>.txt`. The lead's `finish`
-    closes whatever is listed there, so a crash or a skipped cleanup does not leave pages open.
-  - Be frugal with panes: open **one** browser surface for your whole task and reuse it.
-    Go to the next page with `navigate <url>` (or `back`/`forward`/`reload`) on that same
-    surface, not another `open`. Only when you need two pages live at once, add a tab in
-    the same pane: `cmux --json browser surface:N tab new <url>` returns its `surface_ref`
-    (same `pane_ref`). Never use `open-split` or a second `open` to get a fresh page.
-  - Wait before you inspect: `wait --load-state complete --timeout-ms 15000`, or
-    `wait --selector|--text|--url-contains|--function`.
-  - Interact: `click`, `fill <css> --text <t>`, `type`, `press <Key>`, `select`, `check`, `scroll`,
-    `hover`. Add `--snapshot-after` to mutating actions so you see what they did.
-  - Inspect: `snapshot --interactive --compact`, `get text|value|attr|count|styles <css>`,
-    `is visible|enabled|checked <css>`, `find role <role> --name <n>`, `eval <js>`,
-    `viewport <w> <h>` for responsive checks.
-  - Evidence: `mkdir -p <run>/evidence`, then `screenshot --out <run>/evidence/<role>-<step>.png`,
-    plus `console list` and `errors list`, for every pass or fail you report. Cite those files in your report. A
-    UI claim without a snapshot, getter result, or screenshot counts as unverified.
-  - Never type real credentials or customer data into a page. Read secrets from env vars
-    (`--text "$PASSWORD"`) and never echo them into your report or status line.
-  - Clean up before reporting: `cmux close-surface --surface surface:N` for every surface
-    and tab you opened. If `cmux` is not available (--inline mode), say so in your report instead of switching tools quietly.
+- **Do web frontend / UI QA, review, and tests in Google Chrome through the Chrome DevTools
+  MCP** (`mcp__plugin_chrome-devtools-mcp_chrome-devtools__*`). Never use the cmux browser,
+  Playwright, or any other browser, even if one looks quicker.
+  - Open one page for your whole task: `new_page` with `isolatedContext: "<team>-<role>"`, so
+    your cookies and tabs stay apart from other teammates'. Note the `pageId` it returns and pass
+    it on every later call. Move between pages with `navigate_page` on that same page; open a
+    second page only when you need two live at once.
+  - Wait before you inspect: `wait_for` the text you expect. Prefer `take_snapshot` (the
+    accessibility tree, with element uids for `click` / `fill` / `fill_form`) over screenshots.
+  - Evidence for every pass or fail you report: `take_screenshot` with
+    `filePath: <run>/evidence/<role>-<step>.png` (create the folder first), plus
+    `list_console_messages` and `list_network_requests` when errors matter. A UI claim without a
+    snapshot, screenshot or console output counts as unverified.
+  - Never type real credentials or customer data into a page. Read secrets from env vars and
+    never echo them into your report or status line.
+  - Clean up before reporting: `close_page` every page you opened.
+  - If the Chrome DevTools tools are not available to you (haiku-tier teammates don't get them),
+    say "UI checks not done: no browser tools" in your report instead of switching tools.
 - **Send questions to the lead, not your own pane.** When you need the user's input, a
   decision, or sign-off on an approach, do NOT use AskUserQuestion or wait silently in your
   pane — the user is not watching it. SendMessage the lead a message whose first line is
