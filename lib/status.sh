@@ -633,8 +633,8 @@ if tasks_mode:
     if S['eta'] >= 0:
         suffix = f"{sep}ETA ~{age(S['eta'])}"
 label = ('  ~' if use_avg else '  ') + f'{pct}%' + suffix
-# The % and ETA never truncate: the bar gives way first, down to 3 cells.
-barw = max(3, min(20, width - dw(label)))
+# The % and ETA never truncate: the bar gives way first, down to nothing.
+barw = max(0, min(20, width - dw(label)))
 filled = barw * pct // 100
 full, empty = ('#', '-') if ascii_ else ('█', '░')
 # '~' marks a self-reported estimate, the same convention the ETA column uses.
@@ -828,7 +828,8 @@ _st_collect() {
     fi
   fi
   # Registry col 7 (the run dir spawn recorded) wins over the newest-run fallback.
-  local rd; rd=$(awk 'NF>=7 && $7!="-" {print $7; exit}' "$reg" 2>/dev/null || true)
+  # Last row: spawn appends, so it is the newest run when a team slug is reused.
+  local rd; rd=$(awk 'NF>=7 && $7!="-" {r=$7} END{print r}' "$reg" 2>/dev/null || true)
   [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
   local recs; recs=$(_st_records "$reg" "$run" "$leadpane" "$team")
   [ -z "$recs" ] || printf '%s\n' "$recs"

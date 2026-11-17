@@ -210,6 +210,11 @@ f=$( { summ 0 2 20 1 5 20 2 0 0; printf 'a\tm10-a\tWORKING\tinvestigating\tT1: w
   && pass "M10: STEP drops the trailing '· NN%' that the PROGRESS column already shows" \
   || fail "M10: step percent dedupe" "$f"
 
+f=$( { summ 3 8 45 1 120 185 5 0 0; rec core m11-core WORKING investigating "T6: coding" 1 "-"; } | frame m11 20 0 0 )
+grep -q '~45% · ETA ~3h05m' <<<"$(sed -n 2p <<<"$f")" \
+  && pass "M11: at 20 columns the % and a 3h05m ETA still show in full (the bar gives way to nothing)" \
+  || fail "M11: 20-col headline" "$f"
+
 # _st_summary end to end: status prefix crediting, legacy task files
 summary_of() { # <tasks.md content> <records...> -> @summary line
   local d; d=$(mktemp -d "$W/sum.XXXX"); mkdir -p "$d/reports"; printf '%s' "$1" > "$d/tasks.md"; shift
@@ -263,6 +268,15 @@ r=$(grep -E ' w ' <<<"$out" | head -1)
 if [ -n "$r" ] && ! grep -q 'report on disk' <<<"$out" && ! grep -q '1/1 reported' <<<"$out"; then
   pass "B1: report on disk + an open T2 task reads as working on T2, not reported"
 else fail "B1: reused teammate not reported" "$out"; fi
+
+# === M12: a reused team slug reads the newest run's tasks.md for the headline, not the first row's ===
+RUNO="$W/run-old"; RUNW="$W/run-new"; mkdir -p "$RUNO/reports" "$RUNW/reports" "$RUNW/status"
+printf -- '- [x] T1 m12-a: a\n' > "$RUNO/tasks.md"; printf -- '- [ ] T1 m12-b: a\n- [ ] T2 m12-b: b\n' > "$RUNW/tasks.md"
+{ printf 'cmux surface:130 pane m12-a - - %s %s finished 1 %s\n' "$RUNO" "$G" "$G"
+  printf 'cmux surface:131 pane m12-b - - %s %s live 1 %s\n' "$RUNW" "$G" "$G"; } > "$TEAM_REG_DIR/team-m12.tabs"
+out=$(status_out m12)
+grep -q '0/2 tasks' <<<"$out" && pass "M12: headline uses the newest run's backlog when a team slug is reused" \
+  || fail "M12: stale run summary" "$out"
 
 # ═══ E2 — no report + closed surface + no marker renders dead ═══
 { reg_row cmux surface:102 e2-gone live; } > "$TEAM_REG_DIR/team-e2.tabs"
