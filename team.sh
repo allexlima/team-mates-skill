@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run each teammate as an interactive `claude` session in its own cmux pane or tab.
-#   team.sh spawn [--tabs] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]
+# Run each teammate as an interactive `claude` session in its own cmux pane or tab (tmux as a fallback).
+#   team.sh spawn [--tabs] [--tmux] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]
+#                         --tmux: open the pane with tmux even inside cmux
 #                         --resume: continue the session id recorded for <team>-<role> (normally a finished row)
 #                         in its recorded cwd, with <prompt-file> as the new instruction; exit 3 when no session
 #                         is recorded or its dir is gone (then spawn without --resume)
@@ -57,14 +58,19 @@
 #   team.sh facts-lint [--pre-append <file>]  -> freshness of .team/facts.md facts (FRESH/CHECK/GONE/NOANCHOR + DUP); --pre-append scans <file> for secrets
 #   team.sh doccheck            -> doc drift guard: retired phrases, subcommands documented, SKILL flags present in HELP
 #   team.sh --help              -> prints this header. Any other unknown subcommand exits 2 (it never falls through to spawn).
-# Exit codes: 0 ok; 1 fallback/warning; 2 refused (usage, bad input, secret/PII hit, removed --tmux flag);
+# Exit codes: 0 ok; 1 fallback/warning; 2 refused (usage, bad input, secret/PII hit);
 # 3 not found / missing dependency (role, model, registry, python3, cmux); 4 team cap reached or spawn lock busy;
 # 5 role-promote/role-pull direction refused.
 # .team/ always means the MAIN checkout's .team/, also when run from inside a linked worktree.
 # Needs python3 (models, pick-model, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
-# Needs cmux >= 0.65.0, answering `cmux ping` (spawn, close, finish, reap, lead-title, show/list, monitor); those exit 3
-# with an install hint without it. spawn, lead-title, show/list and monitor must also run inside a cmux pane
-# ($CMUX_WORKSPACE_ID and $CMUX_SURFACE_ID set). init, status, roles, models and the facts/doc checks need no cmux.
+# Pane commands (spawn, close, finish, reap, lead-title, show/list, monitor) need a multiplexer (lib/mux.sh):
+# cmux >= 0.65.0 answering `cmux ping` (default, recommended), else tmux. They exit 3 with an install hint
+# when neither is there. spawn, lead-title, show/list and monitor open or focus panes, so they must run
+# inside a cmux pane ($CMUX_WORKSPACE_ID and $CMUX_SURFACE_ID set) or a tmux pane ($TMUX, $TMUX_PANE).
+# The backend is cmux inside cmux, else tmux inside tmux; TEAM_MUX=cmux|tmux or spawn --tmux forces it.
+# Registry col 1 records each row's backend, so one registry may mix both. Under tmux there is no hook
+# feed (no waiting/idle state) and no sidebar pill. init, status, roles, models and the facts/doc checks
+# need neither.
 # TEAM_MODELS_FILE: read the model picker (and the default "model") from this JSON file instead of
 # managed-settings/settings.json.
 # --worktree: the teammate works in its own git worktree .team/worktrees/<team>-<role>
@@ -88,7 +94,7 @@
 # Every teammate runs with CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4, and with
 # CLAUDE_CODE_SUBAGENT_MODEL=<newest sonnet> when `pick-model sonnet` finds one exactly (omitted on fallback).
 # Layout: default splits the lead's tab -- teammates fill a two-column grid to the right of the lead.
-# --tabs: one tab per teammate in the lead's workspace instead. --tmux was removed (cmux only): exit 2.
+# --tabs: one tab per teammate in the lead's workspace instead (a tmux window each under tmux).
 # Permission mode: a haiku-tier model (by resolved tier, so any id that behaves as haiku) always
 # gets --permission-mode dontAsk plus a per-teammate allowlist: Read/Glob/Grep, SendMessage,
 # `git status` (diff/log/show can write via --output), ls/wc, `team.sh facts-lint`, `cmux notify --title ...`, and Edit on exactly its
@@ -260,7 +266,13 @@ import json, sys
 try: c = json.load(sys.stdin).get("caller")
 except Exception: sys.exit(0)
 sys.exit(1 if isinstance(c, dict) and not c.get("pane_ref") else 0)' ;;
-    *) return 0 ;;   # legacy tmux rows: tmux support is gone, never prune them blind
+    tmux)
+      command -v tmux >/dev/null 2>&1 || return 0
+      # tmux 3.7 answers a missing pane with an empty line and exit 0, so only an answer
+      # naming this very pane means alive; empty output or "no server" means gone.
+      if out=$(_tmux display -p -t "$2" '#{pane_id}' 2>&1); then [ "$out" = "$2" ]; return; fi
+      case $out in *"can't find"*|*"no server"*) return 1 ;; esac; return 0 ;;
+    *) return 0 ;;   # unknown backend: never prune blind
   esac
 }
 # Pane commands need a live cmux: fail fast (exit 3) with an install hint instead of opening
@@ -286,7 +298,7 @@ _lead_title() { echo "Main Board - $(basename "$(_root)")"; }
 # spaces still reads whole (`read ... cwd`), and it is where the session's transcript is keyed.
 _reg_add() {
   local team=$1; shift
-  echo "cmux $1 $2 $3 $4 $5 $6 $(_root) live ${7:--} ${8:--}" >> "$(_reg "$team")"
+  echo "${_be:-cmux} $1 $2 $3 $4 $5 $6 $(_root) live ${7:--} ${8:--}" >> "$(_reg "$team")"
 }
 # 0 when a registry row (whole line) carries the terminal marker: its teammate was finished on purpose
 # (`team.sh finish`), its pane is gone by design, and the row holds the session id to resume from.
@@ -382,6 +394,9 @@ _mates() { [ -f "$1" ] || return 0; awk '($3=="pane" || $3=="tab") && $9!="finis
 
 # Libraries: functions only (sub_<name> per subcommand), sourced after the helpers they use,
 # so a missing lib only disables its own subcommands.
+[ -f "$here/lib/mux.sh" ] || { echo "team.sh: $here/lib/mux.sh is missing" >&2; exit 3; }
+# shellcheck source=lib/mux.sh
+. "$here/lib/mux.sh"
 for _lib in "$here/lib/roles.sh" "$here/lib/status.sh"; do
   # shellcheck source=/dev/null
   if [ -f "$_lib" ]; then . "$_lib"; fi
@@ -438,10 +453,13 @@ fi
 # the focused one. A teammate shares the lead's workspace, so a call from one (TEAM_MEMBER set) is a no-op.
 if [ "$sub" = lead-title ]; then
   [ -z "${TEAM_MEMBER:-}" ] || { echo "lead-title: skipped inside teammate $TEAM_MEMBER (only the lead renames)"; exit 0; }
-  _require_cmux ws
+  _mux_need ws
   t=$(_lead_title)
-  cmux rename-workspace --workspace "$CMUX_WORKSPACE_ID" -- "$t" >/dev/null
-  cmux rename-tab --surface "$CMUX_SURFACE_ID" -- "$t" >/dev/null
+  if [ "$(_mux)" = tmux ]; then _tmux rename-window -t "$TMUX_PANE" -- "$t" >/dev/null
+  else
+    cmux rename-workspace --workspace "$CMUX_WORKSPACE_ID" -- "$t" >/dev/null
+    cmux rename-tab --surface "$CMUX_SURFACE_ID" -- "$t" >/dev/null
+  fi
   echo "$t"
   exit 0
 fi
@@ -458,9 +476,9 @@ if [ "$sub" = reap ]; then
     --exclude) excl=${2:?--exclude <team>}; shift 2 ;;
     *) echo "usage: team.sh reap [--yes] [--exclude <team>]" >&2; exit 2 ;;
   esac; done
-  _require_cmux; _need_py
+  _mux_need; _need_py
   me=$(cd -P "$(_root)" && pwd)
-  titles=$(_surface_titles) || { echo "reap: could not read the cmux surface tree; nothing done" >&2; exit 1; }
+  titles=$(_mux_titles) || { echo "reap: could not read the cmux surface tree; nothing done" >&2; exit 1; }
   _lead=$(_lead_pane); leadsurface=${_lead##* }
   today=$(date +%Y-%m-%d)
   rc=0 found=0 unknown=0 dir=$(_reg_dir)
@@ -483,7 +501,8 @@ if [ "$sub" = reap ]; then
       root=$(_row_root "${rd:-}" "${rt:-}")
       [ -z "$root" ] || [ "$root" = "$me" ] || continue   # another project: never shown
       cur=$(awk -F'\t' -v x="$r" '$1==x {print $2; exit}' <<<"$titles")
-      live=; [ "$b" = cmux ] && [ -n "$cur" ] && [ "$cur" = "$title" ] && [ "$r" != "$leadsurface" ] && live=1
+      live=; case $b in cmux|tmux) [ -n "$cur" ] && [ "$cur" = "$title" ] && [ "$r" != "$leadsurface" ] \
+        && [ "$r" != "${TMUX_PANE:-}" ] && live=1 ;; esac
       if [ -z "$ours" ]; then
         # No (or mixed) project root: may well belong to another project, so only count it.
         [ -z "$live" ] || unknown=$((unknown+1))
@@ -496,11 +515,9 @@ if [ "$sub" = reap ]; then
       # The run dir name tells an earlier run from one another lead session started today.
       run=-; case ${rd:-} in */.team/runs/*) run=$(basename "$rd") ;; esac
       note=; case $run in "$today"-*) note=" (run started today: may be live in another lead session)" ;; esac
-      if [ -z "$yes" ]; then echo "$t  $title  cmux $r  run $run$note"; keep+="$row"$'\n'; held=1; continue; fi
-      err=$(cmux close-surface --surface "$r" --force 2>&1 >/dev/null) && err=
-      case $err in *not_found*) err= ;; esac
-      if [ -z "$err" ]; then echo "$t  $title  cmux $r  closed"; rm -f "$dir/team-$t-${title#"$t"-}.round"
-      else echo "$t  $title  cmux $r  could not close: $err" >&2; keep+="$row"$'\n'; held=1; failed=1; fi
+      if [ -z "$yes" ]; then echo "$t  $title  $b $r  run $run$note"; keep+="$row"$'\n'; held=1; continue; fi
+      if err=$(_mux_close "$b" "$r"); then echo "$t  $title  $b $r  closed"; rm -f "$dir/team-$t-${title#"$t"-}.round"
+      else echo "$t  $title  $b $r  could not close: $err" >&2; keep+="$row"$'\n'; held=1; failed=1; fi
     done < "$reg"
     [ -n "$yes" ] && [ -n "$ours" ] || continue
     # Rewrite our registry under its lock (subshell: _lock's EXIT trap releases it per registry).
@@ -538,9 +555,9 @@ fi
 if [ "$sub" = close ]; then
   team=${1:?team}; reg=$(_reg "$team")
   [ -f "$reg" ] || { echo "no tabs recorded for $team"; exit 0; }
-  _require_cmux; _need_py
+  _mux_need; _need_py
   _lock "$reg"
-  titles=$(_surface_titles) || { echo "close: could not read the cmux surface tree; nothing closed" >&2; exit 1; }
+  titles=$(_mux_titles) || { echo "close: could not read the cmux surface tree; nothing closed" >&2; exit 1; }
   # Teammates are live claude sessions, and cmux refuses to close a surface with a
   # running process unless forced. A pane that is already gone counts as closed, and so does
   # a ref now held by a surface with another title (the ref was reused: never close it);
@@ -553,14 +570,12 @@ if [ "$sub" = close ]; then
     [ -n "${id:-}" ] || continue
     rm -f "$(_reg_dir)/team-$team-${title#"$team"-}.round"
     if _finished "$row"; then echo "dropped finished $title (no pane)"; continue; fi
-    if [ "$backend" != cmux ]; then echo "dropped $backend $id ($title): only cmux panes are closed now; close it by hand"; continue; fi
+    case $backend in cmux|tmux) ;; *) echo "dropped $backend $id ($title): unknown backend; close it by hand"; continue ;; esac
     cur=$(awk -F'\t' -v x="$id" '$1==x {print $2; exit}' <<<"$titles")
-    if [ -z "$cur" ]; then echo "closed cmux $id (already gone)"; continue; fi
-    if [ "$cur" != "$title" ]; then echo "skipped cmux $id: now titled '$cur', not '$title' (ref reused); row dropped"; continue; fi
-    err=$(cmux close-surface --surface "$id" --force 2>&1 >/dev/null) && err=
-    case $err in *not_found*) err= ;; esac
-    if [ -z "$err" ]; then echo "closed cmux $id"
-    else echo "could not close cmux $id: $err" >&2; keep+="$row"$'\n'; fi
+    if [ -z "$cur" ]; then echo "closed $backend $id (already gone)"; continue; fi
+    if [ "$cur" != "$title" ]; then echo "skipped $backend $id: now titled '$cur', not '$title' (ref reused); row dropped"; continue; fi
+    if err=$(_mux_close "$backend" "$id"); then echo "closed $backend $id"
+    else echo "could not close $backend $id: $err" >&2; keep+="$row"$'\n'; fi
   done < "$reg"
   # Clear the lead sidebar pill/progress for this team (lib/status.sh); best-effort.
   if declare -F sub_sync >/dev/null; then sub_sync --clear "$team" || true; fi
@@ -631,7 +646,7 @@ fi
 # Exit 1 if anything is off. Edit the owner file (see CLAUDE.md), then re-run.
 if [ "$sub" = doccheck ]; then
   rc=0
-  for pat in 'inherit the lead' 'stacked' '3–5' '2–5' 'as much as possible' '--tmux' 'tmux pane' 'tmux attach' 'tmux session' 'team.sh park' 'cmux browser'; do
+  for pat in 'inherit the lead' 'stacked' '3–5' '2–5' 'as much as possible' 'team.sh park' 'cmux browser' 'cmux-only' 'cmux is required'; do
     grep -rnF -- "$pat" "$here/SKILL.md" "$here/HELP.md" "$here/README.md" 2>/dev/null && rc=1
   done
   hdr=$(sed '/^set -euo pipefail/q' "$here/team.sh")
@@ -656,7 +671,7 @@ fi
 if [ "$sub" = finish ]; then
   team=${1:?usage: team.sh finish <team> <role>} role=${2:?usage: team.sh finish <team> <role>}
   title="$team-$role" reg=$(_reg "$team")
-  _need_py; _require_cmux
+  _need_py; _mux_need
   [ -f "$reg" ] || { echo "finish: no teammates recorded for $team" >&2; exit 3; }
   _lock "$reg"
   n=$(awk -v t="$title" '$4==t && ($3=="pane" || $3=="tab") {n=NR} END{print n+0}' "$reg")
@@ -709,16 +724,14 @@ if [ "$sub" = finish ]; then
     echo "$title was already finished; retrying the close"
   fi
   rc=0
-  if [ "$b" = cmux ]; then
-    titles=$(_surface_titles) || { echo "finish: could not read the cmux surface tree; row is finished, re-run finish to close the pane" >&2; exit 1; }
+  if [ "$b" = cmux ] || [ "$b" = tmux ]; then
+    titles=$(_mux_titles) || { echo "finish: could not read the cmux surface tree; row is finished, re-run finish to close the pane" >&2; exit 1; }
     cur=$(awk -F'\t' -v x="$ref" '$1==x {print $2; exit}' <<<"$titles")
     if [ -z "$cur" ]; then echo "pane $ref already gone"
     elif [ "$cur" != "$title" ]; then echo "pane $ref now titled '$cur', not '$title' (ref reused); not closed"
     else
-      err=$(cmux close-surface --surface "$ref" --force 2>&1 >/dev/null) && err=
-      case $err in *not_found*) err= ;; esac
-      if [ -z "$err" ]; then echo "closed cmux $ref"
-      else echo "finish: could not close cmux $ref: $err (row is finished; re-run finish to retry)" >&2; rc=1; fi
+      if err=$(_mux_close "$b" "$ref"); then echo "closed $b $ref"
+      else echo "finish: could not close $b $ref: $err (row is finished; re-run finish to retry)" >&2; rc=1; fi
     fi
   fi
   if declare -F sub_sync >/dev/null; then sub_sync "$team" || true; fi
@@ -732,10 +745,10 @@ fi
 if [ "$sub" = show ] || [ "$sub" = list ]; then
   team=${1:?team}; reg=$(_reg "$team")
   _need_py
-  _require_cmux ws
+  _mux_need ws
   [ -f "$reg" ] || { echo "no teammates recorded for $team"; exit 3; }
-  _lead=$(_lead_pane)
-  leadpane=${_lead%% *}
+  if [ "$(_mux)" = tmux ]; then leadpane=$TMUX_PANE
+  else _lead=$(_lead_pane); leadpane=${_lead%% *}; fi
   [ -n "$leadpane" ] || { echo "could not resolve this session's pane — run show/list from the lead's pane"; exit 3; }
 
   if [ "$sub" = list ]; then
@@ -748,9 +761,10 @@ if [ "$sub" = show ] || [ "$sub" = list ]; then
       case ${lay:-} in pane|tab) ;; *) continue ;; esac
       gone=""
       if _model_gone "${mdl:-}" || _model_gone "${smdl:-}"; then gone="  MODEL_GONE"; fi
-      if [ "$b" != cmux ]; then st="unknown ($b $ref)"
-      elif _finished "$row"; then st=finished
+      if _finished "$row"; then st=finished
+      elif [ "$b" != cmux ] && [ "$b" != tmux ]; then st="unknown ($b $ref)"
       elif ! _alive "$b" "$ref"; then st=dead   # only a definite "not found" counts as dead
+      elif [ "$b" = tmux ]; then st="working ($ref)"
       else
         pp=$(_pane_of "$ref")
         case "$pp" in
@@ -765,10 +779,15 @@ if [ "$sub" = show ] || [ "$sub" = list ]; then
   fi
 
   role=${2:?role}; title="$team-$role"
-  row=$(awk -v t="$title" '$1=="cmux" && ($3=="pane" || $3=="tab") && $4==t {r=$0} END{print r}' "$reg")
+  row=$(awk -v t="$title" '($1=="cmux" || $1=="tmux") && ($3=="pane" || $3=="tab") && $4==t {r=$0} END{print r}' "$reg")
   ref=$(awk '{print $2}' <<<"$row")
   [ -n "$ref" ] || { echo "no recorded pane for $title (not spawned)"; exit 3; }
   if _finished "$row"; then echo "$title is finished (no pane); spawn it again to give it more work"; exit 3; fi
+  if [ "$(awk '{print $1}' <<<"$row")" = tmux ]; then
+    _alive tmux "$ref" || { echo "$title is gone; respawn it"; exit 3; }
+    _mux_focus tmux "$ref" || { echo "show: tmux could not focus $title's pane ($ref)" >&2; exit 1; }
+    echo "showing $title ($ref, focused)"; exit 0
+  fi
   _alive cmux "$ref" || { echo "$title is gone; respawn it"; exit 3; }
   cur=$(_pane_of "$ref")
   # Alive but unresolved: cmux is failing, not the teammate. Never suggest a respawn (or --replace) here.
@@ -796,12 +815,12 @@ fi
 layout=pane worktree= caveman=1 replace= resume= branch=
 while :; do case ${1:-} in
   --resume) resume=1; shift ;;
-  --tmux) echo "--tmux was removed in rev4: /team is cmux-only (run it from a cmux pane)" >&2; exit 2 ;;
+  --tmux) export TEAM_MUX=tmux; shift ;;
   --tabs) layout=tab; shift ;; --worktree) worktree=1; shift ;;
   --branch) branch=${2:?--branch needs a name}; shift 2 ;;
   --replace) replace=1; shift ;; --no-caveman) caveman=; shift ;; *) break ;;
 esac; done
-spawn_usage="usage: team.sh spawn [--tabs] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]"
+spawn_usage="usage: team.sh spawn [--tabs] [--tmux] [--worktree] [--branch <name>] [--replace] [--resume] [--no-caveman] <team> <role> <prompt-file> [model]"
 team=${1:?$spawn_usage} role=${2:?$spawn_usage} pfile=${3:?$spawn_usage} model=${4:-}
 [ $# -le 4 ] || { echo "$spawn_usage (flags go before <team>; got extra: ${*:5})" >&2; exit 2; }
 
@@ -817,7 +836,8 @@ esac
 [ -f "$pfile" ] && [ -r "$pfile" ] || { echo "prompt file not readable: $pfile" >&2; exit 2; }
 pfile="$(cd "$(dirname "$pfile")" && pwd)/$(basename "$pfile")"
 _need_py
-_require_cmux ws
+_mux_need ws
+_be=$(_mux)
 
 # A wrong model does not fail the spawn: claude exits 0, the pane opens, and the
 # session is dead on arrival -- easy to miss entirely once the teammate is out of sight
@@ -912,7 +932,7 @@ live=$(awk -v t="$title" '$4==t && $9!="finished" {print $1" "$2}' "$reg" 2>/dev
 if [ -n "$live" ]; then
   [ -n "$replace" ] || { echo "$title is already live ($(echo $live)); pass --replace to close it and respawn" >&2; exit 2; }
   while read -r b r; do
-    [ "$b" != cmux ] || cmux close-surface --surface "$r" --force >/dev/null 2>&1 || true
+    _mux_close "$b" "$r" >/dev/null 2>&1 || true
     echo "replaced: closed $b $r ($title)"
   done <<<"$live"
   awk -v t="$title" '$4!=t || $9=="finished"' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"
@@ -994,21 +1014,20 @@ if [ "$layout" = pane ]; then
   # #1, and every later teammate splits down from the one two slots back. A 1-wide
   # stack gave each teammate 1/N of the screen height, which got unreadable fast.
   # Finished rows have no pane, so only live ones anchor the grid.
-  n=$(awk '$3=="pane" && $9!="finished"{c++} END{print c+0}' "$reg" 2>/dev/null || echo 0)
+  n=$(awk -v b="$_be" '$1==b && $3=="pane" && $9!="finished"{c++} END{print c+0}' "$reg" 2>/dev/null || echo 0)
+  # Anchors come from this backend's own live rows (a cmux ref means nothing to tmux).
   if [ "$n" -eq 0 ]; then
-    out=$(cmux new-split right --surface "$CMUX_SURFACE_ID" --command "$cmd" --focus false)
+    ref=$(_mux_open right - "$cmd" "$title")
   elif [ "$n" -eq 1 ]; then
-    out=$(cmux new-split right --surface "$(awk '$3=="pane" && $9!="finished"{print $2; exit}' "$reg")" --command "$cmd" --focus false)
+    ref=$(_mux_open right "$(awk -v b="$_be" '$1==b && $3=="pane" && $9!="finished"{print $2; exit}' "$reg")" "$cmd" "$title")
   else
-    out=$(cmux new-split down --surface "$(awk '$3=="pane" && $9!="finished"{print $2}' "$reg" | sed -n "$((n-1))p")" --command "$cmd" --focus false)
+    ref=$(_mux_open down "$(awk -v b="$_be" '$1==b && $3=="pane" && $9!="finished"{print $2}' "$reg" | sed -n "$((n-1))p")" "$cmd" "$title")
   fi
 else
-  out=$(cmux new-surface --type terminal --workspace "$CMUX_WORKSPACE_ID" --command "$cmd" --focus false)
+  ref=$(_mux_open tab - "$cmd" "$title")
 fi
-ref=$(awk '{print $2}' <<<"$out")   # "OK surface:N ..."
-cmux rename-tab --surface "$ref" "$title" >/dev/null
 # The new session supersedes any finished row of this title; dropped only now, so a spawn that
 # failed above still leaves the old session id to resume.
-awk -v t="$title" '$4!=t' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"
+if [ -f "$reg" ]; then awk -v t="$title" '$4!=t' "$reg" > "$reg.tmp" && mv "$reg.tmp" "$reg"; fi   # first spawn: no registry yet
 _reg_add "$team" "$ref" "$layout" "$title" "${model:--}" "$submodel" "$rundir" "$sid" "$dir"
-echo "cmux $layout $ref ($team-$role) in current workspace"
+echo "$_be $layout $ref ($team-$role) in current workspace"

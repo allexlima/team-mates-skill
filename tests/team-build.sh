@@ -745,17 +745,18 @@ JSON
 }
 
 # ══════════════════════════════════════════════════════════════════
-# rev4-2 — --tmux removed: spawn --tmux → exit 2 with "removed" message
+# rev4-2 (superseded by the tmux fallback) — --tmux forces the tmux backend: outside tmux it
+# exits 3 naming tmux, and opens no cmux pane
 # ══════════════════════════════════════════════════════════════════
 {
   R="$W/rv2"; _mkgit "$R"
   pf="$R/p.md"; printf 'prompt\n' > "$pf"
   TM="rv2$$"
   _reset_logs
-  out=$(cd "$R" && bash "$TEAM_SH" spawn --tmux "$TM" worker "$pf" sonnet 2>&1) && rc=0 || rc=$?
-  [ "$rc" = 2 ] && [[ "$out" == *"removed"* ]] && [ ! -s "$CMUX_LOG" ] \
-    && pass "rev4-2: --tmux removed → exit 2, no pane opened" \
-    || fail "rev4-2: --tmux removed → exit 2, no pane opened" "rc=$rc cmux=$(cat "$CMUX_LOG") out=${out:0:120}"
+  out=$(cd "$R" && env -u TMUX -u TMUX_PANE bash "$TEAM_SH" spawn --tmux "$TM" worker "$pf" sonnet 2>&1) && rc=0 || rc=$?
+  [ "$rc" = 3 ] && [[ "$out" == *tmux* ]] && ! grep -qE 'new-split|new-surface' "$CMUX_LOG" \
+    && pass "rev4-2: --tmux outside tmux exits 3 naming tmux, no cmux pane opened" \
+    || fail "rev4-2: --tmux forces tmux" "rc=$rc cmux=$(cat "$CMUX_LOG") out=${out:0:120}"
 }
 
 # ══════════════════════════════════════════════════════════════════

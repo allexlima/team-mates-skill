@@ -1,14 +1,14 @@
 ---
 name: team
 description: Emulate Claude Code agent teams — one interactive claude session per role in its own cmux pane or tab, a shared task file, cross-session messaging for challenge rounds, and a git-ignored .team/ folder with reusable roles, run records, and a verified-facts ledger. Use when the user runs /team or asks for a "team", "debate", or multiple agents that challenge each other's findings.
-argument-hint: "<task> [--roles N] [--rounds N] [--model <alias|id>] [--autoroles] [--tabs] [--no-gate] [--no-caveman] [--autoclose] [--inline] [--no-monitor] [--help]"
+argument-hint: "<task> [--roles N] [--rounds N] [--model <alias|id>] [--autoroles] [--tabs] [--tmux] [--no-gate] [--no-caveman] [--autoclose] [--inline] [--no-monitor] [--help]"
 ---
 
 # /team — agent team emulation
 
 **If the arguments are empty or are exactly `--help`:** print `~/.claude/skills/team/HELP.md` to the user verbatim (as markdown) and stop — do not start a team.
 
-You are the **lead**. Each teammate is a separate interactive `claude` session in its own pane — in cmux, a split of the lead's tab (`--tabs`: one cmux tab each instead) — named and titled `<team>-<role>` (the title stays fixed so the user can manage panes), reachable with SendMessage. Teammates can message each other directly. Defaults: 3 roles, 1 challenge round; the lead fits a model to each role (`--model` forces one everywhere; see `--help`). `--inline` runs teammates as in-session named subagents instead (no panes, no cmux required; see the end). cmux is required for pane modes — if it is absent, fail fast with an install hint (https://cmux.dev).
+You are the **lead**. Each teammate is a separate interactive `claude` session in its own pane — in cmux, a split of the lead's tab (`--tabs`: one cmux tab each instead) — named and titled `<team>-<role>` (the title stays fixed so the user can manage panes), reachable with SendMessage. Teammates can message each other directly. Defaults: 3 roles, 1 challenge round; the lead fits a model to each role (`--model` forces one everywhere; see `--help`). `--inline` runs teammates as in-session named subagents instead (no panes, no multiplexer needed; see the end). Pane modes use cmux (default, recommended) and fall back to tmux when the lead runs inside tmux but not cmux; `team.sh` fails fast with an install hint when neither is there.
 
 ## 0. Workspace
 Pick a short team slug (e.g. `rev1`) and run `bash ~/.claude/skills/team/team.sh init <team>` from the working directory. It creates/keeps `.team/` at the project root (git root, else cwd), adds `.team/` and `CLAUDE.local.md` to `.gitignore` in a git repo, adds a pointer note to `CLAUDE.local.md` once, and prints this run's dir `<run>` (`.team/runs/<date>-<team>/`).
@@ -45,8 +45,8 @@ Pick a short team slug (e.g. `rev1`) and run `bash ~/.claude/skills/team/team.sh
 
 ## 3. Spawn (one pane per role)
 For each role, write its prompt to `<run>/prompts/<role>.md`, then run from the working directory:
-`bash ~/.claude/skills/team/team.sh spawn [--tabs] [--worktree] [--no-caveman] <team> <role> <run>/prompts/<role>.md <model>`
-(`--worktree` for every build-run teammate; `--tabs` / `--no-caveman` only if the user gave them). Teammates start in auto permission mode, with a fixed pane/tab title, with `teammate-rules.md` appended to their system prompt (split independent work across subagents in one message; verify what comes back), and with the caveman terse-output style unless `--no-caveman`. Those two are concatenated into one appended file because `claude` keeps only the last `--append-system-prompt-file`. The script prints where the pane/tab opened.
+`bash ~/.claude/skills/team/team.sh spawn [--tabs] [--tmux] [--worktree] [--no-caveman] <team> <role> <run>/prompts/<role>.md <model>`
+(`--worktree` for every build-run teammate; `--tabs` / `--tmux` / `--no-caveman` only if the user gave them). Teammates start in auto permission mode, with a fixed pane/tab title, with `teammate-rules.md` appended to their system prompt (split independent work across subagents in one message; verify what comes back), and with the caveman terse-output style unless `--no-caveman`. Those two are concatenated into one appended file because `claude` keeps only the last `--append-system-prompt-file`. The script prints where the pane/tab opened.
 
 After each spawn, run `bash ~/.claude/skills/team/team.sh sync <team>` — this updates the lead workspace sidebar with current progress (spawning N/M, phase).
 

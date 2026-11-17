@@ -16,11 +16,13 @@ and writes the final synthesis.
     --model M        Force one model for every teammate (alias or full id); a haiku-tier id
                      puts every role in dontAsk and is refused on build runs.
                      Default: the lead picks a model per role (see Choosing models)
-    --tabs           One cmux tab per teammate instead of panes
+    --tabs           One cmux tab (tmux: window) per teammate instead of panes
+    --tmux           Open teammate panes with tmux even inside cmux (tmux is used
+                     automatically when you are not in cmux)
     --no-gate        Build runs: skip no-mistakes (commits stay local, no push/PR)
     --no-caveman     Teammates write normal prose instead of caveman terse style
     --autoclose      Close the team right after the final synthesis
-    --inline         No panes: teammates run as in-session subagents (no cmux required)
+    --inline         No panes: teammates run as in-session subagents (no cmux or tmux needed)
     --no-monitor     Skip the auto-refreshing status pane that opens by default after the
                      teammates spawn. The pane shows each teammate's state, current step and
                      flags, with anything that needs you pinned at the top. Not counted toward
@@ -141,8 +143,13 @@ On a new machine the shared library starts empty until you sync it.
 ## Where teammates appear
     In cmux (default)   Your tab splits: you on the left, teammates in a two-column
                         grid on the right; finished ones close.
-                        cmux is required for pane modes. Install: https://cmux.dev
+                        cmux is the default and recommended. Install: https://cmux.dev
     cmux + --tabs       A new tab per teammate in the current workspace
+    In tmux (fallback)  Used when you run /team inside tmux but not cmux (or with --tmux).
+                        Same two-column grid; --tabs gives one tmux window each. tmux has
+                        no hook feed, so the monitor can't show waiting or idle there
+                        (stalled? still shows after 10 silent minutes), there is no
+                        sidebar pill, and rows can't be clicked.
     --inline            No panes: teammates run as subagents inside your session.
                         Works without cmux.
 
@@ -166,7 +173,7 @@ today: may be live in another lead session)" require extra care — you may want
 check before closing. Registries without a project root are left alone and counted
 in a summary line. You can also run `team.sh reap` at any time to see the list, or
 `team.sh reap --yes` to close without prompting. `--exclude <team>` skips the named
-team. Requires cmux; skipped under --inline.
+team. Needs cmux or tmux; skipped under --inline.
 
 ## Examples
     /team review PR #42 for security, performance and test coverage
@@ -222,7 +229,7 @@ team. Requires cmux; skipped under --inline.
   registry.
   The status pane opens automatically (unless `--no-monitor`) and repaints only when the
   frame changes, checking every 30 s (override with `TEAM_STATUS_INTERVAL`). It exits when
-  the team is closed. Requires cmux. Under `--inline` there is no registry and no pane; track
+  the team is closed. Needs cmux or tmux. Under `--inline` there is no registry and no pane; track
   teammates by their returned reports and tasks.md.
   In the pane each row is numbered: press that number to focus that teammate's pane, `r` to
   repaint, `q` to quit. Clicking a row does the same. Clicking captures the mouse, so

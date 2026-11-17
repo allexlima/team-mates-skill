@@ -272,7 +272,8 @@ if grep -qi 'dead' <<<"$out" && ! grep -q 'finished' <<<"$out"; then
 else fail "E2: closed surface without marker renders dead" "$out"; fi
 
 # ═══ E3 — decision 43: backend != cmux renders unknown, never alive/working ═══
-{ reg_row tmux %7 e3-old live; } > "$TEAM_REG_DIR/team-e3.tabs"
+# (tmux rows are a live backend since the tmux fallback; an unknown backend keeps this guarantee)
+{ reg_row legacy %7 e3-old live; } > "$TEAM_REG_DIR/team-e3.tabs"
 out=$(status_out e3)
 if grep -qi 'unknown' <<<"$out" && ! grep -qiE 'working|drafting|spawned' <<<"$out"; then
   pass "E3: non-cmux backend row renders 'unknown', not alive (decision 43)"

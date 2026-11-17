@@ -27,8 +27,8 @@ quote it word-for-word — they never restate it in their own words.
 1. Edit the **owner** file above.
 2. Grep the repo for the old wording and update or delete the copies.
 3. Run `bash team.sh doccheck` — it flags retired drift phrases
-   (`inherit the lead`, `stacked`, `3–5`, `--tmux`, `tmux pane`, `tmux session`,
-   `tmux attach` and `team.sh park`), confirms every subcommand is documented in the `team.sh` header,
+   (`inherit the lead`, `stacked`, `3–5`, `team.sh park`, `cmux browser`, `cmux-only` and
+   `cmux is required`), confirms every subcommand is documented in the `team.sh` header,
    and confirms every `--flag` in `SKILL.md`'s argument-hint is explained in `HELP.md`.
    Fix what it reports.
 
@@ -40,7 +40,7 @@ in CI or as a manual pre-push check so you keep the global hook.
 
 ## The full gate set
 
-`doccheck` is the doc guard only. Before merging a branch, run all five suites
+`doccheck` is the doc guard only. Before merging a branch, run every suite
 from the main checkout with `TEAM_MEMBER` unset (an inherited value makes
 `rev4-3` fail for the wrong reason):
 
@@ -52,6 +52,7 @@ bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
+bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
 bash team.sh facts-lint       # CHECK rows are expected when cited files changed
 ```
 

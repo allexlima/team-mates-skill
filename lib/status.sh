@@ -124,7 +124,7 @@ fi
 _st_state() {
   local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7
   if [ -n "$fin" ]; then echo FINISHED
-  elif [ "$backend" != cmux ] || [ -z "$alive" ]; then echo UNKNOWN
+  elif { [ "$backend" != cmux ] && [ "$backend" != tmux ]; } || [ -z "$alive" ]; then echo UNKNOWN
   elif [ "$alive" != 1 ]; then echo DEAD
   elif [ -n "$gone" ]; then echo MODEL_GONE
   elif [ -n "$waiting" ]; then echo WAITING
@@ -246,6 +246,11 @@ _st_row() {
     _model_gone "$m" 2>/dev/null && { gone=1; break; }
   done
 
+  # tmux rows: liveness only. tmux has no hook feed, so no waiting/idle; stalled? still
+  # comes from status-file silence above.
+  if [ -z "$fin" ] && [ "$backend" = tmux ] && command -v tmux >/dev/null; then
+    alive=0; _alive tmux "$ref" 2>/dev/null && alive=1
+  fi
   # Liveness / parked-in-lead-pane / WAITING / IDLE (cmux only; skipped once finished)
   if [ -z "$fin" ] && [ "$backend" = cmux ] && command -v cmux >/dev/null; then
     # DEAD only on _alive's definite answer (not_found / null pane_ref). _alive keeps
@@ -911,7 +916,9 @@ sub_status() {
       printf '\n  all teammates finished — closing this pane.\n'
       printf '  (reopen with: team.sh monitor %s · keep it with TEAM_MONITOR_AUTOCLOSE=0)\n' "$team"
       sleep "${TEAM_MONITOR_CLOSE_GRACE:-4}"
-      if [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
+      if [ "$(_mux)" = tmux ] && [ -n "${TMUX_PANE:-}" ]; then
+        _tmux kill-pane -t "$TMUX_PANE" >/dev/null 2>&1 || true
+      elif [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
         cmux close-surface --force --surface "$CMUX_SURFACE_ID" >/dev/null 2>&1 || true
       fi
       return 0
@@ -999,8 +1006,9 @@ _st_focus_role() {
 sub_monitor() {
   local team=${1:?team}
 
-  # cmux with workspace context is a hard requirement (decision 1)
-  _require_cmux ws
+  # A pane-capable backend is required: cmux (recommended) or tmux (lib/mux.sh).
+  _mux_need ws
+  local be; be=$(_mux)
 
   local reg; reg=$(_reg "$team")
   local interval=${TEAM_STATUS_INTERVAL:-30}
@@ -1010,8 +1018,8 @@ sub_monitor() {
   # Capture lead's pane_ref NOW (running as the lead), for the monitor pane's
   # command (inside it, _lead_pane would resolve to the monitor itself).
   local lead_pane=
-  local lp; lp=$(_lead_pane 2>/dev/null || true)
-  lead_pane="${lp%% *}"
+  if [ "$be" = tmux ]; then lead_pane=$TMUX_PANE
+  else local lp; lp=$(_lead_pane 2>/dev/null || true); lead_pane="${lp%% *}"; fi
   local lead_pane_q; lead_pane_q=$(printf '%q' "$lead_pane")
 
   # Acquire registry lock: makes single-instance check + append atomic vs spawn.
@@ -1046,14 +1054,11 @@ sub_monitor() {
   # process). TEAM_LEAD_PANE is baked in for the "in the lead's pane" note.
   local team_q; team_q=$(printf '%q' "$team")
   local script_q; script_q=$(printf '%q' "$here/team.sh")
-  local cmd="TEAM_LEAD_PANE=$lead_pane_q TEAM_STATUS_INTERVAL=$interval bash $script_q status --watch $team_q"
+  local cmd="TEAM_MUX=$be TEAM_LEAD_PANE=$lead_pane_q TEAM_STATUS_INTERVAL=$interval bash $script_q status --watch $team_q"
 
-  local out ref
-  out=$(cmux new-split down --surface "$CMUX_SURFACE_ID" \
-        --command "$cmd" --focus false)
-  ref=$(awk '{print $2}' <<<"$out")
-  cmux rename-tab --surface "$ref" "$title" >/dev/null
-  _reg_add "$team" "$ref" dash "$title" - - -
+  local ref
+  ref=$(_mux_open dash - "$cmd" "$title") || { printf 'monitor: could not open the pane\n' >&2; return 1; }
+  _be=$be _reg_add "$team" "$ref" dash "$title" - - -
   printf 'monitor pane: %s\n' "$title"
 }
 
