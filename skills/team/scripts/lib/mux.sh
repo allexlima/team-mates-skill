@@ -6,7 +6,8 @@
 # registry can hold both and every per-row action uses the row's own backend.
 #   _mux                       -> cmux | tmux | none for NEW panes: TEAM_MUX, else cmux inside a
 #                                 cmux pane, else tmux inside a tmux session
-#   _tmux ARGS...              -> tmux, on the private socket TEAM_TMUX_SOCKET when set (tests)
+#   _tmux ARGS...              -> tmux on the lead's server: TEAM_TMUX_SOCKET (-L name, tests) wins,
+#                                 else the socket path in $TMUX (covers tmux -L and -S), else the default
 #   _mux_need [ws]             -> exit 3 unless a backend is usable; ws: new panes can open here
 #   _mux_open <right|down|tab|dash> <anchor|-> <cmd> <title>  -> prints the new ref; anchor - = the lead
 #   _mux_close <backend> <ref> -> 0 closed or already gone; else prints the error, returns 1
@@ -14,7 +15,11 @@
 #   _mux_focus <backend> <ref> -> brings a tmux pane forward (cmux focus stays in team.sh show)
 # Requires team.sh: _require_cmux, _surface_titles, _reg_dir, $sub (for messages).
 
-_tmux() { tmux ${TEAM_TMUX_SOCKET:+-L "$TEAM_TMUX_SOCKET"} "$@"; }
+_tmux() {
+  if [ -n "${TEAM_TMUX_SOCKET:-}" ]; then tmux -L "$TEAM_TMUX_SOCKET" "$@"
+  elif [ -n "${TMUX:-}" ]; then tmux -S "${TMUX%%,*}" "$@"   # $TMUX = socket-path,server-pid,session
+  else tmux "$@"; fi
+}
 
 _mux() {
   case ${TEAM_MUX:-} in cmux|tmux) echo "$TEAM_MUX"; return 0 ;; esac
