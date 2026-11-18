@@ -43,6 +43,19 @@ then this release's fixes and the new contributor flow.
 - The README links to `--help` for optional dependencies instead of repeating
   them.
 
+### Documentation
+
+- `HELP.md`, `SKILL.md` and `teammate-rules.md` now describe the registry-dir
+  checks, the scoped `Edit` as pre-approval, the hook-skip denies and the gaps
+  in them, and the monitor's team-scoped task counts.
+- `HELP.md` lists the optional dependencies (superpowers, humanizer,
+  beautify-github-readme, diagram-design, caveman, the Chrome DevTools MCP with
+  Google Chrome stable, and the no-mistakes CLI) and what a run loses without
+  each.
+- `TODO.md` is closed out for this release: finished items are gone, and the
+  open ones (shell-lint warnings, the TUI monitor, the hook fence) are for
+  v0.2.0.
+
 ### Fixed
 
 - GNU `stat` order in `lib/status.sh` and its tests, which broke ELAPSED and
