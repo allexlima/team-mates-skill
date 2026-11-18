@@ -221,14 +221,18 @@ _need_py() {
 # changes without notice, so it is read at run time instead of hardcoded. Emits
 # "<label>TAB<id>TAB<tier>", best tier first. `behavesAs` is the capability tier a
 # model is gated at, which is what decides whether it fits a role.
+# Claude Code's managed-settings.json for this OS (Windows is not supported by team.sh).
+case $(uname -s) in
+  Darwin) export TEAM_MANAGED_SETTINGS="/Library/Application Support/ClaudeCode/managed-settings.json" ;;
+  *) export TEAM_MANAGED_SETTINGS=/etc/claude-code/managed-settings.json ;;
+esac
 _team_models() {
   _need_py
   python3 - <<'PY'
 import json, os, re
 options = None
 paths = ([os.environ["TEAM_MODELS_FILE"]] if os.environ.get("TEAM_MODELS_FILE") else
-         ["/Library/Application Support/ClaudeCode/managed-settings.json",
-          os.path.expanduser("~/.claude/settings.json")])
+         [os.environ["TEAM_MANAGED_SETTINGS"], os.path.expanduser("~/.claude/settings.json")])
 for path in paths:
     try:
         with open(path, encoding="utf-8") as fh:
@@ -409,8 +413,7 @@ _default_model() {
   python3 - <<'PY'
 import json, os
 paths = ([os.environ["TEAM_MODELS_FILE"]] if os.environ.get("TEAM_MODELS_FILE") else
-         ["/Library/Application Support/ClaudeCode/managed-settings.json",
-          os.path.expanduser("~/.claude/settings.json")])
+         [os.environ["TEAM_MANAGED_SETTINGS"], os.path.expanduser("~/.claude/settings.json")])
 for path in paths:
     try:
         with open(path, encoding="utf-8") as fh:

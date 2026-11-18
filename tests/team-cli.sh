@@ -46,6 +46,25 @@ export TEAM_REG_DIR="$W/reg"
 unset TEAM_MEMBER   # inherited from a teammate pane it would make lead-title a no-op
 mkdir -m 700 "$W/reg"
 
+# 00. Model readers look in this OS's managed-settings path (macOS, or /etc/claude-code on Linux), then
+#     the user file. A Python audit hook records the files opened, so nothing under /etc is needed.
+mkdir -p "$W/audit"
+cat > "$W/audit/sitecustomize.py" <<'PY'
+import os, sys
+_log = os.environ["TEAM_TEST_OPENLOG"]
+def _hook(ev, args):
+    if ev == "open" and isinstance(args[0], str) and "settings" in args[0]:
+        with open(_log, "a") as fh: fh.write(args[0] + "\n")
+sys.addaudithook(_hook)
+PY
+: > "$W/opens.log"
+(env -u TEAM_MODELS_FILE HOME="$W/nohome" PYTHONPATH="$W/audit" TEAM_TEST_OPENLOG="$W/opens.log" \
+  bash "$TEAM_SH" models >/dev/null 2>&1 || true)
+case $(uname -s) in Darwin) mpath="/Library/Application Support/ClaudeCode/managed-settings.json" ;; *) mpath=/etc/claude-code/managed-settings.json ;; esac
+grep -qxF "$mpath" "$W/opens.log" \
+  && pass "models: this OS's managed-settings path is read ($mpath)" \
+  || fail "models: this OS's managed-settings path is read ($mpath)" "opened: $(sort -u "$W/opens.log" | tr '\n' ' ')"
+
 # 0. TEAM_REG_DIR gets the same checks as the default private dir: a real directory we own, mode 700,
 #    not a symlink (created 0700 when missing); a relative TMPDIR never yields a cwd-relative registry.
 mkdir -m 700 "$W/rd-ok"; ln -s "$W/rd-ok" "$W/rd-link"; mkdir -m 755 "$W/rd-755"; : > "$W/rd-file"
