@@ -98,6 +98,14 @@ grep -q 'j1 · 2/5 tasks' <<<"$frame" && pass "J2: classic frame and status --js
 out=$(cd "$G" && bash "$TEAM_SH" status --json nosuchteam 2>/dev/null); rc=$?
 [ "$rc" = 3 ] && [ -z "$out" ] && pass "J3: status --json on an unknown team exits 3 with no output" || fail "J3: unknown team" "rc=$rc out=$out"
 
+# ═══ U1 — an `any` task a live teammate names on its status line is not unassigned ═══
+un=$(python3 -I -c 'import json,sys; print(json.loads(sys.argv[1])["summary"]["unassigned"])' "$json")
+[ "$un" = 0 ] && pass "U1: T3 (any, ready) claimed by ui's status line 'T3: ...' does not count as unassigned" \
+  || fail "U1: claimed any task counted as unassigned" "unassigned=$un"
+printf 'T2: implementing backoff · 50%%\n' > "$RUN/status/ui.txt"   # ui no longer names T3
+un=$(cd "$G" && bash "$TEAM_SH" status --json j1 | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["summary"]["unassigned"])')
+[ "$un" = 1 ] && pass "U2: once nobody names T3, the ready any task is unassigned again" || fail "U2: unclaimed any task" "unassigned=$un"
+
 # ═══ P1 — the TUI's stdlib layer: forecast, history, transcript reader ═══
 st=$(python3 -I "$TUI" --selftest 2>&1); rc=$?
 [ "$rc" = 0 ] && pass "P1: monitor_tui.py --selftest ($(grep -c '^PASS' <<<"$st") checks: forecast, history, transcript)" \

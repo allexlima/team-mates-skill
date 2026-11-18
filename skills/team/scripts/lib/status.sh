@@ -1013,7 +1013,7 @@ sub_status() {
     local run recs; run=$(_st_run_of "$team")
     recs=$(_st_collect "$team" --records) || return 3
     if [ -n "$sync" ]; then
-      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" 2>/dev/null)" || true
+      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null)" || true
     fi
     printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team"
     return 0
