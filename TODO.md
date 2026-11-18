@@ -46,6 +46,9 @@ Reported by tm2-tui (branch `feat/tui-monitor`); not re-measured here.
       process doing identify, notifications and summary.
 - [ ] The TUI's "Σ tok" sums input plus cache-read tokens per message, so cache re-reads dominate
       (118M for a 45-minute run). Relabel it or show output tokens only.
+- [ ] Check the transcript path and fields the TUI reads against a current Claude Code release
+      (`~/.claude/projects/*/<session-id>.jsonl`, `message.usage`, `tool_use`/`tool_result`):
+      they are not a documented interface.
 
 ## Permissions
 

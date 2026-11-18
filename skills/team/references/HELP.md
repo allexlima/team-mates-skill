@@ -278,6 +278,31 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   the repeated `· NN%`. All of these are **self-reported** — the teammate's own estimate,
   since no measured per-teammate progress signal exists — so treat them as a rough
   indication, not a measurement.
+- **The TUI monitor.** When the status pane is a terminal and Textual is importable by
+  `python3` (or `uv` is installed, which fetches it on first use), the pane runs the
+  full-screen monitor in `scripts/monitor_tui.py` instead of the frame above. It shows the
+  same states, NEEDS YOU rows and overall % (it reads `team.sh status --json`, so both
+  monitors always agree), plus: one card per live teammate (state, task, step, a progress
+  bar, its own ETA, a sparkline of its % over time, the tool call in flight and how long it
+  has run, context use and tokens), the backlog with each open task's forecast, an event
+  log, and a detail view per teammate (report, recent tool calls, progress history, session
+  info). Keys: `1`-`9` focus that teammate's pane, arrows/tab move between cards,
+  `enter` or a click opens the detail view, `s` shows the selected pane, `r` refreshes,
+  `t` changes the theme, `?` lists keys and states, `q` quits (the team keeps running).
+  The team ETA is a forecast, not a measurement: it schedules every open task over the
+  live teammates, after its `needs:`, with each running task's remaining time projected
+  from its self-reported % and every other task given the typical task duration seen so
+  far; the range shown with it reruns that with shorter and longer durations. Tokens,
+  context and the tool in flight are read (never written) from each teammate's Claude Code
+  transcript, `~/.claude/projects/*/<session-id>.jsonl`; a tool call running for many
+  minutes on a `stalled?` teammate is called out as a likely permission prompt. The
+  monitor keeps what it observed in `<run>/monitor/history.jsonl`, so a reopened monitor
+  keeps its sparklines and task timings. It refreshes every 5 s (`TEAM_TUI_INTERVAL`),
+  closes itself like the classic pane (`TEAM_MONITOR_AUTOCLOSE`, `TEAM_MONITOR_CLOSE_GRACE`),
+  and falls back to the classic pane if it cannot start. `TEAM_MONITOR_UI=classic` keeps
+  the classic pane; `TEAM_MONITOR_THEME` picks a Textual theme (default `tokyo-night`);
+  `TEAM_CONTEXT_WINDOW` sets the context size the % is measured against (default 200k, or
+  1M for a `[1m]` model). Try it with no team: `python3 scripts/monitor_tui.py --demo`.
 - Say "shut down the team" to close all teammate panes/tabs (the run record stays;
   clean worktrees are removed, branches and PRs stay).
 
