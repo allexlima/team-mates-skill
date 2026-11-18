@@ -45,9 +45,10 @@ CI runs `doccheck` on every push and PR, so there is no local hook to enable.
 
 ## Branch workflow
 
-`main` is stable and released; `dev` is the integration branch. Both are
-protected: PR required, green CI required, no force-push or deletion, enforced
-for admins, 0 approvals.
+`main` is stable and released; `dev` is the integration branch. The
+maintainer sets branch protection on both (GitHub settings, not in this repo):
+PR required, green CI required, no force-push or deletion, enforced for
+admins, 0 approvals.
 
 1. Branch from `dev` as `feat/…`, `fix/…`, `docs/…`, `ci/…` or `chore/…`.
 2. Commit as `git-practices.md` says, one logical change each.
@@ -71,12 +72,15 @@ with `TEAM_MEMBER` unset (an inherited value makes
 ```
 bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
 bash skills/team/scripts/team.sh doccheck
+shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh tests/*.sh
 bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
+bash tests/plugin-events.sh   # once the file is on dev; CI skips a missing suite
+bash tests/monitor-tui.sh     # once the file is on dev; needs Textual for full coverage
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 
