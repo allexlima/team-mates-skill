@@ -57,6 +57,10 @@ the slowest teammate sets the pace for the whole team.
   - Never type real credentials or customer data into a page. Read secrets from env vars and
     never echo them into your report or status line.
   - Clean up before reporting: `close_page` every page you opened.
+  - Requirement: the MCP drives Google Chrome stable on the machine (verified on Chrome 158:
+    `new_page` with an `isolatedContext`, `take_snapshot` and `close_page` all worked from a
+    teammate pane). It needs the `chrome-devtools-mcp` plugin enabled in the session. A machine
+    with only Chrome Beta is reported to fail; that is not verified here.
   - If the Chrome DevTools tools are not available to you (haiku-tier teammates don't get them),
     say "UI checks not done: no browser tools" in your report instead of switching tools.
 - **Stay on the backlog.** Your work is the `T<n>` lines with your name (or `any`) in `tasks.md`.
