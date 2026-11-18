@@ -150,6 +150,18 @@ deny	GIT_CONFIG_SYSTEM=/tmp/evil.cfg git commit
 deny	GIT_CONFIG=/tmp/evil.cfg git commit
 deny	sudo git commit -n
 deny	sudo -u root git -C . commit -n
+deny	sudo -n git commit --no-verify
+deny	sudo -S git commit -n
+deny	sudo -k git commit -n
+deny	/usr/bin/time -a -o f git commit --no-verify
+deny	git commit -m a#b --no-verify
+deny	git commit -m "#12 fix" --no-verify
+deny	git config set core.hooksPath /dev/null
+deny	git config --file .git/config core.hooksPath x
+allow	git status # --no-verify
+allow	git status\n# git commit --no-verify
+allow	git config remote.origin.url https://host/include-lib.git
+allow	git config user.name alias.bob
 allow	git config --unset core.hooksPath
 allow	git -c user.name=include commit -m ok
 allow	sudo ls

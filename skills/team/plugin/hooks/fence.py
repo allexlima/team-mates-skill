@@ -21,10 +21,13 @@ WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "expor
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
 WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after"}
-WRAPPER_VALUE_SHORT = set("uCSPnask")  # a short-option cluster ending in one of these takes a value
+# per wrapper, a short-option cluster ending in one of these letters takes a value
+WRAPPER_VALUE_SHORT = {"env": "uCSP", "nice": "n", "exec": "a", "timeout": "sk", "sudo": "ugCDhprtUTR", "time": "of"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath, aliases or includes"
 CONFIG_SAFE = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list", "--unset", "--unset-all", "unset"}
+CONFIG_VALUE_OPTS = {"-f", "--file", "--blob", "--type", "--default", "--comment", "--value"}
+CONFIG_SUBCMDS = {"set", "get", "unset", "list", "edit", "rename-section", "remove-section"}
 CONFIG_FILE_VARS = {"GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"}
 
 
@@ -43,10 +46,34 @@ def hookspath(text):
     return "hookspath" in t or "alias." in t or "include" in t
 
 
+def strip_comments(s):
+    """Drop '#' comments the way the shell does: only an unquoted '#' at a word start."""
+    out, q, i = [], None, 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\" and q != "'":
+            out.append(s[i:i + 2])
+            i += 2
+            continue
+        if q:
+            q = None if c == q else q
+        elif c in "'\"":
+            q = c
+        elif c == "#" and (not out or out[-1][-1] in " \t\n;&|()"):
+            j = s.find("\n", i)
+            i = len(s) if j < 0 else j
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def segments(cmd):
     """Split a shell command into simple-command argvs at ; & | ( ) and newlines."""
-    lex = shlex.shlex(cmd.replace("\\\n", "").replace("\n", " ; "), posix=True, punctuation_chars=True)
+    cmd = strip_comments(cmd.replace("\\\n", ""))
+    lex = shlex.shlex(cmd.replace("\n", " ; "), posix=True, punctuation_chars=True)
     lex.whitespace_split = True
+    lex.commenters = ""
     seg = []
     for tok in lex:
         if tok and set(tok) <= set(";&|()"):
@@ -77,8 +104,12 @@ def git_problem(argv):
     if i >= len(argv):
         return None
     sub = argv[i]
-    if sub == "config" and any(map(hookspath, argv[i + 1:])) and not CONFIG_SAFE & set(argv[i + 1:]):
-        return HOOKS
+    if sub == "config":
+        args, k = argv[i + 1:], 0
+        while k < len(args) and (args[k].startswith("-") or args[k] in CONFIG_SUBCMDS):
+            k += 2 if args[k] in CONFIG_VALUE_OPTS else 1
+        if k < len(args) and hookspath(args[k]) and not CONFIG_SAFE & set(args):
+            return HOOKS
     for a in argv[i + 1:]:
         if a == "--":
             break
@@ -102,18 +133,19 @@ def check_command(cmd, depth=0):
         # drop leading VAR=value assignments and wrappers such as env/command/exec
         while argv and (os.path.basename(argv[0]) in WRAPPERS or "=" in argv[0].split("/")[0]):
             head = argv.pop(0)
+            wrapper = os.path.basename(head)
             if head.split("=", 1)[0] in CONFIG_FILE_VARS or (head.startswith("GIT_CONFIG") and hookspath(head)):
                 return HOOKS
             while argv and argv[0].startswith("-") and len(argv[0]) > 1:
                 opt = argv.pop(0)
                 short = opt[1] != "-"
-                if argv and (opt in WRAPPER_VALUE_LONG or (short and opt[-1] in WRAPPER_VALUE_SHORT)):
+                if argv and (opt in WRAPPER_VALUE_LONG or (short and opt[-1] in WRAPPER_VALUE_SHORT.get(wrapper, ""))):
                     val = argv.pop(0)
-                    if (opt == "--split-string" or (short and opt[-1] == "S")) and depth < 3:
+                    if wrapper == "env" and (opt == "--split-string" or (short and opt[-1] == "S")) and depth < 3:
                         why = check_command(val, depth + 1)
                         if why:
                             return why
-            if os.path.basename(head) == "timeout" and argv:
+            if wrapper == "timeout" and argv:
                 argv.pop(0)
         if not argv:
             continue
