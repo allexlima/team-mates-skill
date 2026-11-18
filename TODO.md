@@ -69,7 +69,7 @@ Reported by tm2-hooks (branch `feat/hook-spawn`, not yet in `dev`); not re-check
 - [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
 - [ ] The PreToolUse fence covers only Edit/Write and the listed git forms. It does not cover
-      `eval`, backticks, `$(...)`, `xargs`, `env -S` strings, a changed `HOME` or
+      `eval`, backticks, `$(...)`, `xargs`, a changed `HOME` or
       `XDG_CONFIG_HOME`, aliases already in the user's git config, GNU `time --output`, or any
       other Bash write. A real Bash sandbox is still open.
 

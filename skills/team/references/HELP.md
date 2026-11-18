@@ -193,7 +193,7 @@ is used). `TEAM_REG_DIR` overrides the dir and gets the same checks; a relative 
 absolute. Registries an older version left in `/tmp/team-*.tabs` are not migrated or read:
 close such a team with the old copy of the skill, or move its files into the new dir by hand.
 A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 with
-"refusing registry dir"; a missing `TEAM_REG_DIR` is created 0700.
+"refusing registry dir"; a missing `TEAM_REG_DIR` is created 0700 if its parent exists (a nested missing path is refused).
 
 ## Examples
     /team review PR #42 for security, performance and test coverage
