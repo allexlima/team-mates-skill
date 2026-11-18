@@ -57,7 +57,7 @@ cheapest tier that still fits it: the top tier for the adversarial role and for
 architecture / security / subtle debugging, the middle tier for ordinary work,
 and the cheap tier only for mechanical sweeps. `team.sh pick-model <tier>` returns
 the best model id for that tier on this machine (newest version within the `claude-*`
-family; GLM / Kimi only by explicit full id). If no model of the requested tier is
+family; GLM / Kimi only by explicit full id). The set comes from `managed-settings.json` (macOS `/Library/Application Support/ClaudeCode/`, Linux/WSL `/etc/claude-code/`), then `~/.claude/settings.json`; `TEAM_MODELS_FILE` replaces both. Windows is not supported and `managed-settings.d/` drop-ins are not read. If no model of the requested tier is
 available it falls back through the chain (opus → sonnet → haiku) and exits 1, so the
 lead can see a lower tier was used; exit 3 means no model is available at any tier. Cheap-tier (haiku) teammates — and any model id that resolves to haiku tier (e.g. GLM /
 Kimi) — always run unattended in `dontAsk` mode with a per-teammate allowlist:
