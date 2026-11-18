@@ -1,5 +1,5 @@
 {
   "name": "team-mates-events",
   "version": "0.1.0",
-  "description": "Session-only hooks that /team loads with --plugin-dir to record teammate state events."
+  "description": "Session-only hooks that /team loads with --plugin-dir to record teammate state events and fence teammate edits and hook-skipping git."
 }
