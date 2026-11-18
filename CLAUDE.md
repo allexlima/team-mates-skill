@@ -81,7 +81,6 @@ bash tests/monitor-tui.sh     # status --json contract, TUI forecast/transcripts
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
 bash tests/plugin-events.sh   # once the file is on dev; CI skips a missing suite
-bash tests/monitor-tui.sh     # once the file is on dev; needs Textual for full coverage
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 
