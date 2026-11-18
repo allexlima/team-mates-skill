@@ -235,6 +235,32 @@ got=$(summary_of "$(printf -- '- [x] m8-a: a\n- [ ] m8-b: b\n- [ ] m8-c: c\n')" 
   && pass "M8: a legacy one-line-per-role tasks.md gives done/total and an overall %" \
   || fail "M8: legacy tasks" "got=[$got]"
 
+# M14: another team's lines in a shared tasks.md do not count; with no team given every line does
+summary_team() { # <team> <tasks.md content> <records...>
+  local d t=$1; d=$(mktemp -d "$W/sum.XXXX"); mkdir -p "$d/reports"; printf '%s' "$2" > "$d/tasks.md"; shift 2
+  printf '%s\n' "$@" | bash -c '. "$1"; _st_summary "$2" "$3"' _ "$LIB" "$d" "$t" 2>&1
+}
+tm=$(printf -- '- [x] T1 tm2-a: x\n- [ ] T2 tm2-a: y\n- [ ] T3 any: z\n- [x] T4 other-b: w\n- [ ] T5 other-b: v\n')
+got=$(summary_team tm2 "$tm" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f2-3 <<<"$got")" = "$(printf '1\t3')" ] \
+  && pass "M14: _st_summary counts only <team>-* and any owners" \
+  || fail "M14: foreign team lines counted" "got=[$got]"
+got=$(summary_of "$tm" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f3 <<<"$got")" = 5 ] && pass "M14b: with no team every task line counts" || fail "M14b: no-team count" "got=[$got]"
+
+# M15: a live owner with a ready task of its own is listed; a blocked one is not
+got=$(summary_team tm2 "$(printf -- '- [ ] T1 tm2-a: x\n- [ ] T2 tm2-b: y - needs: T1\n')" \
+  "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tx\t1\t-\t-\t3')" "$(printf 'b\ttm2-b\tIDLE\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-a ] \
+  && pass "M15: @summary lists live owners whose own task is ready (not blocked ones)" \
+  || fail "M15: ready owners" "got=[$got]"
+
+# M16: idle teammate with its own ready task is flagged even when nothing is unassigned
+f=$( { printf '@summary\t0\t2\t0\t0\t5\t-1\t2\t0\t0\ttm2-a\n'; rec a tm2-a IDLE investigating "T1: waiting" 3 "-"; rec b tm2-b IDLE investigating "T2: waiting" 3 "-"; } | frame m16 100 0 0 )
+{ [ "$(grep -c 'idle with work pending' <<<"$f")" = 1 ] && grep -E 'tm2-a|a ' <<<"$f" | grep -q 'idle with work pending'; } \
+  && pass "M16: idle teammate with a ready task of its own is flagged 'idle with work pending'" \
+  || fail "M16: own ready task" "$f"
+
 # ═══ End-to-end fixtures ═══
 G="$W/repo"; mkdir -p "$G"; git -C "$G" init -q
 RUN="$W/run"; mkdir -p "$RUN/reports" "$RUN/status"
