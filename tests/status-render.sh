@@ -15,9 +15,21 @@ TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.s
 LIB="$(dirname "$TEAM_SH")/lib/status.sh"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0
+# tmo <secs> cmd...: GNU timeout, else gtimeout, else perl alarm (macOS CI has no coreutils); 124 on expiry.
+tmo() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"
+  else perl -e 'my $s = shift; my $p = fork; if (!$p) { exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill 15, $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+  fi
+}
 pass() { echo "PASS  $1"; passes=$((passes+1)); }
 fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
 unset TEAM_MEMBER NO_COLOR TEAM_FORCE_COLOR TEAM_COLS
+# One UTF-8 locale for the whole suite: en_US.UTF-8 when installed, else C.UTF-8 (minimal CI images).
+UTF8_LOC=C.UTF-8
+locale -a 2>/dev/null | grep -qix 'en_US\.utf-\?8' && UTF8_LOC=en_US.UTF-8
+export UTF8_LOC
 
 # ── stub cmux: identify answers "gone" for refs listed in $CMUX_GONE_REFS; everything else is empty ──
 mkdir -p "$W/bin"
@@ -57,7 +69,7 @@ for l in sys.stdin.read().split("\n")[:-1] or []:
 }
 # Run _st_frame in a clean bash with the library sourced; records on stdin.
 # `|| true`: on code without _st_frame the case must FAIL (empty frame), not abort the whole run.
-frame() { LC_ALL=en_US.UTF-8 bash -c '. "$1"; shift; _st_frame "$@"' _ "$LIB" "$@" 2>/dev/null || true; }
+frame() { LC_ALL=$UTF8_LOC bash -c '. "$1"; shift; _st_frame "$@"' _ "$LIB" "$@" 2>/dev/null || true; }
 rec() { printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@"; }   # role title state milestone step age_min note
 
 # ═══ G1 — A1/decision 1: all-healthy frame is compact, no NEEDS YOU block ═══
@@ -235,6 +247,76 @@ got=$(summary_of "$(printf -- '- [x] m8-a: a\n- [ ] m8-b: b\n- [ ] m8-c: c\n')" 
   && pass "M8: a legacy one-line-per-role tasks.md gives done/total and an overall %" \
   || fail "M8: legacy tasks" "got=[$got]"
 
+# M14: another team's lines in a shared tasks.md do not count; with no team given every line does
+summary_team() { # <team> <tasks.md content> <records...>
+  local d t=$1; d=$(mktemp -d "$W/sum.XXXX"); mkdir -p "$d/reports"; printf '%s' "$2" > "$d/tasks.md"; shift 2
+  printf '%s\n' "$@" | bash -c '. "$1"; _st_summary "$2" "$3"' _ "$LIB" "$d" "$t" 2>&1
+}
+tm=$(printf -- '- [x] T1 tm2-a: x\n- [ ] T2 tm2-a: y\n- [ ] T3 any: z\n- [x] T4 other-b: w\n- [ ] T5 other-b: v\n')
+got=$(summary_team tm2 "$tm" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f2-3 <<<"$got")" = "$(printf '1\t3')" ] \
+  && pass "M14: _st_summary counts only <team>-* and any owners" \
+  || fail "M14: foreign team lines counted" "got=[$got]"
+got=$(summary_of "$tm" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f3 <<<"$got")" = 5 ] && pass "M14b: with no team every task line counts" || fail "M14b: no-team count" "got=[$got]"
+
+# M15: a live owner with a ready task of its own is listed; a blocked one is not
+got=$(summary_team tm2 "$(printf -- '- [ ] T1 tm2-a: x\n- [ ] T2 tm2-b: y - needs: T1\n')" \
+  "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tx\t1\t-\t-\t3')" "$(printf 'b\ttm2-b\tIDLE\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-a ] \
+  && pass "M15: @summary lists live owners whose own task is ready (not blocked ones)" \
+  || fail "M15: ready owners" "got=[$got]"
+
+# M16: idle teammate with its own ready task is flagged even when nothing is unassigned
+f=$( { printf '@summary\t0\t2\t0\t0\t5\t-1\t2\t0\t0\ttm2-a\n'; rec a tm2-a IDLE investigating "T1: waiting" 3 "-"; rec b tm2-b IDLE investigating "T2: waiting" 3 "-"; } | frame m16 100 0 0 )
+{ [ "$(grep -c 'idle with work pending' <<<"$f")" = 1 ] && grep -E 'tm2-a|a ' <<<"$f" | grep -q 'idle with work pending'; } \
+  && pass "M16: idle teammate with a ready task of its own is flagged 'idle with work pending'" \
+  || fail "M16: own ready task" "$f"
+
+# M17 (A2): a ready `any` task that a live teammate has claimed in its status prefix is not unassigned
+got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tT3: doing it\t1\t-\t-\t3')")
+[ "$(cut -f9 <<<"$got")" = 0 ] && pass "M17: a ready any task claimed by a live teammate's T<n>: prefix is not unassigned" \
+  || fail "M17: claimed any task" "got=[$got]"
+got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tidle chat\t1\t-\t-\t3')")
+[ "$(cut -f9 <<<"$got")" = 1 ] && pass "M17b: an unclaimed ready any task stays unassigned" || fail "M17b: unclaimed" "got=[$got]"
+
+got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tT3: starting\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-a ] && pass "M17c: the live claimant of a ready any task is its ready holder" \
+  || fail "M17c: claimant not listed" "got=[$got]"
+got=$(summary_team tm2 "$(printf -- '- [ ] T1 tm2-a: x\n')" \
+  "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tx\t1\t-\t-\t3')" "$(printf 'b\ttm2-b\tWORKING\tinvestigating\tT1: taking it\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-b ] && pass "M17d: a task claimed by another teammate is no longer the line owner's" \
+  || fail "M17d: line owner still listed" "got=[$got]"
+
+# M17e: a reused teammate (own lines all ticked, ms=reported) still claims a ready any task
+got=$(summary_team tm2 "$(printf -- '- [x] T1 tm2-a: x\n- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tWORKING\treported\tT3: picking it up\t1\t-\t-\t3')")
+[ "$(cut -f9 <<<"$got")" = 0 ] && pass "M17e: a reported teammate's claim on a ready any task counts as assigned" \
+  || fail "M17e: reported claimant ignored" "got=[$got]"
+
+# M18: team tm does not take team tm-x's lines (a sibling run dir names tm-x)
+d=$(mktemp -d "$W/pre.XXXX"); mkdir -p "$d/2026-11-18-tm/reports" "$d/2026-11-18-tm-x"
+printf -- '- [ ] T1 tm-a: x\n- [ ] T2 tm-x-a: y\n' > "$d/2026-11-18-tm/tasks.md"
+got=$(bash -c '. "$1"; _st_summary "$2" tm' _ "$LIB" "$d/2026-11-18-tm" </dev/null 2>&1)
+[ "$(cut -f3 <<<"$got")" = 1 ] && pass "M18: team tm ignores team tm-x's lines when tm-x is a sibling run" \
+  || fail "M18: slug prefix collision" "got=[$got]"
+
+# M19 (A1): GNU stat (-f is filesystem mode: junk on stdout, exit 1) must not break ELAPSED/AGE
+mkdir -p "$W/gnu"
+cat > "$W/gnu/stat" <<'SH'
+#!/bin/sh
+case $1 in
+  -f) echo "  File: \"$3\""; echo "    ID: 0 Namelen: 255 Type: ext2/ext3"; exit 1 ;;
+  -c) /usr/bin/stat -c %Y "$3" 2>/dev/null || /usr/bin/stat -f %m "$3" ;;
+esac
+SH
+chmod +x "$W/gnu/stat"
+RUNG="$W/gnurun"; mkdir -p "$RUNG/reports" "$RUNG/status"; GR="$W/gnureg"; mkdir -m 700 "$GR"
+printf 'x\n' > "$GR/team-g1-w.sysprompt.md"; printf 'T1: x\n' > "$RUNG/status/w.txt"
+rec=$(PATH="$W/gnu:$PATH" TEAM_REG_DIR="$GR" bash -c '. "$1"; _reg() { echo "'"$GR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" g1' _ "$LIB" "cmux surface:190 pane g1-w - - $RUNG $W live 9999 $W" "$RUNG" 2>&1 || true)
+{ [[ "$(cut -f6 <<<"$rec")" =~ ^[0-9]+$ ]] && [[ "$(cut -f9 <<<"$rec")" =~ ^[0-9]+$ ]]; } \
+  && pass "M19: AGE and ELAPSED are integers under a GNU stat" \
+  || fail "M19: GNU stat breaks AGE/ELAPSED" "rec=[$rec]"
+
 # ═══ End-to-end fixtures ═══
 G="$W/repo"; mkdir -p "$G"; git -C "$G" init -q
 RUN="$W/run"; mkdir -p "$RUN/reports" "$RUN/status"
@@ -249,7 +331,7 @@ reg_row() {   # backend ref title state(col9|'') -> row; layout pane, no model, 
 }
 status_out() { # <team> [env...] -> plain-frame text
   local t=$1; shift
-  (cd "$G" && env LC_ALL=en_US.UTF-8 TEAM_COLS=100 "$@" bash "$TEAM_SH" status "$t" 2>&1)
+  (cd "$G" && env LC_ALL=$UTF8_LOC TEAM_COLS=100 "$@" bash "$TEAM_SH" status "$t" 2>&1)
 }
 row_of() { grep -E "^  (·|-) $1 |^ +. $1 " <<<"$2" | head -1; }
 
@@ -438,7 +520,7 @@ printf '%s\n' "$A_RECS" | TEAM_KEYMAP_OUT="$KM" frame p 100 0 0 1 >/dev/null
 { [ "$(awk -F'\t' '$1=="1"{print $2}' "$KM")" = t ]   && [ "$(awk -F'\t' '$1=="2"{print $2}' "$KM")" = c ]   && [ "$(wc -l < "$KM" | tr -d ' ')" = 2 ]; }   && pass "P10: row keys run across NEEDS YOU then the table, one key per teammate"   || fail "P10: key ordering" "$(cat "$KM")"
 
 # _st_click: release on a row focuses it; press, wheel, blank lines and junk do not.
-clicks=$(LC_ALL=en_US.UTF-8 bash -c '
+clicks=$(LC_ALL=$UTF8_LOC bash -c '
   . "$1"; _st_focus_role() { echo "FOCUS:$2"; return 0; }
   for s in "[<0;9;5m" "[<0;9;99m" "[<0;9;5M" "[<64;9;5m" "junk"; do
     _st_click demo "$2" "$s" >/dev/null 2>&1 && echo "acted:$s" || echo "ignored:$s"
@@ -451,7 +533,7 @@ nacted=$(grep -c '^acted:' <<<"$clicks" || true)
 RUNP="$G/.team/runs/2026-10-08-p1"; mkdir -p "$RUNP/reports" "$RUNP/status"
 printf 'cmux surface:140 pane p1-w - - %s %s live 9999 %s\n' "$RUNP" "$G" "$G" > "$TEAM_REG_DIR/team-p1.tabs"
 printf 'gone wild \xc2\xb7 999%%\n' > "$RUNP/status/w.txt"
-rec=$(LC_ALL=en_US.UTF-8 TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _st_row "$2" "$3" "" p1' _ "$LIB" "cmux surface:140 pane p1-w - - $RUNP $G live 9999 $G" "$RUNP" 2>/dev/null || true)
+rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _st_row "$2" "$3" "" p1' _ "$LIB" "cmux surface:140 pane p1-w - - $RUNP $G live 9999 $G" "$RUNP" 2>/dev/null || true)
 gotpct=$(cut -f8 <<<"$rec"); gotstep=$(cut -f5 <<<"$rec")
 { [ "${gotpct:-x}" = 100 ] && [ "${gotstep:-x}" = "gone wild" ]; } \
   && pass "P12: record layer clamps '999%' to 100 and strips it from the STEP text" \
@@ -460,7 +542,7 @@ gotpct=$(cut -f8 <<<"$rec"); gotstep=$(cut -f5 <<<"$rec")
 # A percentage the teammate never wrote stays absent (-1), not 0 -- 0% would draw
 # an empty bar and claim "no progress", which is a different statement.
 printf 'investigating facts\n' > "$RUNP/status/w.txt"
-rec=$(LC_ALL=en_US.UTF-8 TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _st_row "$2" "$3" "" p1' _ "$LIB" "cmux surface:140 pane p1-w - - $RUNP $G live 9999 $G" "$RUNP" 2>/dev/null || true)
+rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _st_row "$2" "$3" "" p1' _ "$LIB" "cmux surface:140 pane p1-w - - $RUNP $G live 9999 $G" "$RUNP" 2>/dev/null || true)
 [ "$(cut -f8 <<<"$rec")" = "-" ] \
   && pass "P13: a status line with no percentage reports pct '-' (absent), never 0" \
   || fail "P13: absent pct" "rec=[$rec]"
@@ -530,7 +612,7 @@ pill=$(grep -E '^set-status ' "$CMUX_LOG" | head -1)
 # _st_row must therefore never emit an empty field -- absent values use '-'.
 RUNN="$G/.team/runs/2026-10-08-n1"; mkdir -p "$RUNN/reports" "$RUNN/status"
 printf 'plain step with no note\n' > "$RUNN/status/q.txt"
-rec=$(LC_ALL=en_US.UTF-8 TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
+rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
 { [ "$nf" = 9 ] && [ -z "$empty" ]; } \
@@ -555,7 +637,7 @@ acreg="$TEAM_REG_DIR/team-ac.tabs"
 # for the pane on a completed run would make it vanish immediately.
 printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg"
 ( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_CLOSE_GRACE=0 \
-    timeout 4 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
+    tmo 4 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
 [ "$rc" = 124 ] \
   && pass "AC1: a run already all-finished keeps the monitor open (no self-close on open)" \
   || fail "AC1: closed on open" "exit=$rc (124 = still running, as required)"
@@ -565,7 +647,7 @@ printf 'cmux surface:170 pane ac-w - - %s %s live - -\n' "$RUNAC" "$G" > "$acreg
 ( sleep 2; printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg" ) &
 flip=$!
 acout=$( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_CLOSE_GRACE=0 \
-    timeout 12 bash "$TEAM_SH" status --watch ac 2>&1 ); rc=$?
+    tmo 12 bash "$TEAM_SH" status --watch ac 2>&1 ); rc=$?
 wait "$flip" 2>/dev/null || true
 { [ "$rc" = 0 ] && grep -q 'all teammates finished' <<<"$acout"; } \
   && pass "AC2: when the last teammate finishes the monitor announces it and exits 0" \
@@ -576,11 +658,42 @@ printf 'cmux surface:170 pane ac-w - - %s %s live - -\n' "$RUNAC" "$G" > "$acreg
 ( sleep 2; printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg" ) &
 flip=$!
 ( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_AUTOCLOSE=0 \
-    timeout 6 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
+    tmo 6 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
 wait "$flip" 2>/dev/null || true
 [ "$rc" = 124 ] \
   && pass "AC3: TEAM_MONITOR_AUTOCLOSE=0 keeps the pane open after everyone finishes" \
   || fail "AC3: opt-out ignored" "exit=$rc (124 = still running, as required)"
+
+# TM1: the perl fallback of tmo returns 124 on expiry and the command's own status otherwise
+rc1=$( (PATH="$W/nobin:/usr/bin:/bin"; mkdir -p "$W/nobin"; tmo 1 sleep 5; echo $?) 2>/dev/null | tail -1)
+rc2=$( (PATH="$W/nobin:/usr/bin:/bin"; tmo 5 sh -c 'exit 3'; echo $?) 2>/dev/null | tail -1)
+{ [ "$rc1" = 124 ] && [ "$rc2" = 3 ]; } && pass "TM1: tmo returns 124 on expiry and the command's status otherwise" || fail "TM1: tmo" "rc1=$rc1 rc2=$rc2"
+
+# AQ1 (A3): pressing q in a tty monitor exits 0. The EXIT trap read sub_status's locals after it
+# returned; under `set -u` that trap died ("km: unbound variable") and turned the exit into 1.
+RUNAQ="$G/.team/runs/2026-10-08-aq"; mkdir -p "$RUNAQ/reports" "$RUNAQ/status"
+printf 'cmux surface:171 pane aq-w - - %s %s live - -\n' "$RUNAQ" "$G" > "$TEAM_REG_DIR/team-aq.tabs"
+aqrc=$(cd "$G" && TEAM_SH="$TEAM_SH" TEAM_STATUS_INTERVAL=1 python3 -I - <<'PY' 2>&1
+import fcntl, os, pty, select, struct, sys, termios, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp('bash', ['bash', os.environ['TEAM_SH'], 'status', '--watch', 'aq'])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 100, 0, 0))
+time.sleep(3)
+for _ in range(60):
+    try: os.write(fd, b'q')   # re-send: a key typed between two reads waits for the next one
+    except OSError: pass
+    while select.select([fd], [], [], 0.5)[0]:   # drain, or a full tty buffer blocks the monitor
+        try:
+            if not os.read(fd, 65536): break
+        except OSError: break
+    r, st = os.waitpid(pid, os.WNOHANG)
+    if r:
+        print(os.waitstatus_to_exitcode(st)); sys.exit(0)
+os.kill(pid, 9); print('hung')
+PY
+)
+[ "$aqrc" = 0 ] && pass "AQ1: q in the tty monitor exits 0" || fail "AQ1: q exit status" "rc=[$aqrc]"
 
 echo; echo "status-render: $passes passed, $fails failed"
 [ "$fails" = 0 ] || exit 1
