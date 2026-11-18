@@ -6,6 +6,43 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - DRAFT, date set at release
+
+Draft entries; every line must match what is merged on `dev` when this is released.
+
+### Added
+
+- A Textual TUI monitor (`monitor_tui.py`, opened by `team.sh monitor`) with one
+  card per teammate, the ETA marked as a forecast, a details screen and a
+  `--demo` mode. `team.sh status --json` feeds it. The suite `tests/monitor-tui.sh`
+  is in the gate set; Textual is optional and the text monitor remains.
+- `team.sh prompt`, which renders a teammate prompt from
+  `references/prompt-template.md`, so `SKILL.md` keeps only the procedure.
+- A session-only event plugin (`skills/team/plugin`, `team-mates-events`): hooks
+  append one line per event (state, tool name, never tool input or message
+  text) to `<run>/events/<role>.jsonl`.
+- A PreToolUse fence in that plugin: it denies `Edit` and `Write` outside the
+  teammate's worktree, run directory and scratch dir, and denies git commands
+  that skip hooks. It narrows the hole but does not make `Bash` safe; the known
+  gaps are documented in `HELP.md`.
+- `team.sh spawn` wires the plugin, the events file, a scratch dir and the fence
+  roots into each teammate with a run dir.
+- The monitor shows a PERMISSION state, read from the event log, for a teammate
+  blocked on a tool-approval prompt.
+- README GIFs of the monitor and `--help`, recorded from the `.tape` scripts in
+  `assets/readme/tapes/`.
+
+### Changed
+
+- The monitor reads context windows correctly for 1M-token models, and
+  `status --json --sync` polls about twice as fast with 7 live teammates.
+- `team.sh clean` removes a team's scratch dirs and system-prompt files.
+
+### Known limits
+
+- Mouse clicks in the TUI under cmux are unverified.
+- The TUI's token total counts cache re-reads, so it overstates distinct context.
+
 ## [0.1.1] - 2026-11-18
 
 First tagged release. It covers everything since the repo began on 2026-09-30,
