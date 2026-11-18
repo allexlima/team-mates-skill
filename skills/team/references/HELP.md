@@ -287,7 +287,7 @@ one; it loses only what the table says.
 | `diagram-design` skill | Diagrams | Use a Mermaid or ASCII diagram |
 | `caveman` skill (`~/.agents/skills/caveman`) | Terse teammate output, saves tokens | Teammates write normal prose, as with `--no-caveman` |
 | Chrome DevTools MCP + Google Chrome stable | UI QA by teammates | The report says "UI checks not done: no browser tools"; UI claims stay unverified |
-| `no-mistakes` CLI | The build-run gate that pushes and opens each PR | No gate: the lead or TL pushes and opens the PRs by hand, as with `--no-gate` |
+| `no-mistakes` CLI | The build-run gate that pushes and opens each PR | No gate, as with `--no-gate`: commits stay local; the lead or TL pushes and opens the PRs by hand |
 
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
