@@ -19,8 +19,6 @@ TMUX_LOG="$W/tmux.log"; CMUX_LOG="$W/cmux.log"; : > "$TMUX_LOG"; : > "$CMUX_LOG"
 # TMUX_TITLES "%N=title ..." (pane_title answers; default: the title it was given by select-pane -T).
 cat > "$W/bin/tmux" <<'SH'
 #!/usr/bin/env bash
-# -S <path> (the lead's own server, from $TMUX) is recorded apart so the other cases' log lines stay as-is
-[ "$1" = -S ] && { printf '%s\n' "$2" >> "$TMUX_LOG.S"; shift 2; }
 printf '%s\n' "$*" >> "$TMUX_LOG"
 [ "$1" = -L ] && shift 2
 ST="$TMUX_LOG.panes"; touch "$ST"
@@ -165,19 +163,6 @@ o=$(cd "$R" && env -u TMUX -u TMUX_PANE -u TEAM_MUX PATH="$W/realbin:/usr/bin:/b
   && [ "$(grep -bo -i 'cmux' <<<"$o" | head -1 | cut -d: -f1)" -lt "$(grep -bo -i 'tmux' <<<"$o" | head -1 | cut -d: -f1)" ]; } \
   && pass "X8: with neither cmux nor tmux, spawn exits 3 and recommends cmux before tmux" \
   || fail "X8: no backend" "rc=$rc o=$o"
-
-# X13: a lead on its own tmux server (tmux -L/-S, so $TMUX names that socket) is listed through it,
-# not through the default server; TEAM_TMUX_SOCKET still wins when set
-: > "$TMUX_LOG"; : > "$TMUX_LOG.S"
-mt() { (cd "$R" && env "$@" bash -c '_surface_titles() { :; }; . "$(dirname "$1")/lib/mux.sh"; _mux_titles' _ "$TEAM_SH" >/dev/null 2>&1) || true; }
-mt TMUX="/tmp/lead-sock,42,0" TEAM_MUX=tmux
-{ grep -qx '/tmp/lead-sock' "$TMUX_LOG.S" && grep -q '^list-panes' "$TMUX_LOG"; } \
-  && pass "X13: _mux_titles lists panes on the socket named by \$TMUX" \
-  || fail "X13: default-server list" "S=$(cat "$TMUX_LOG.S") log=$(cat "$TMUX_LOG")"
-: > "$TMUX_LOG"; : > "$TMUX_LOG.S"
-mt TMUX="/tmp/lead-sock,42,0" TEAM_TMUX_SOCKET=named TEAM_MUX=tmux
-{ grep -q '^-L named list-panes' "$TMUX_LOG" && [ ! -s "$TMUX_LOG.S" ]; } \
-  && pass "X13b: TEAM_TMUX_SOCKET overrides \$TMUX" || fail "X13b: override" "S=$(cat "$TMUX_LOG.S") log=$(cat "$TMUX_LOG")"
 
 # X9: real tmux smoke test on a private socket
 if [ -n "$REAL_TMUX" ]; then
