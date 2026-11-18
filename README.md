@@ -26,7 +26,7 @@ ln -s ~/team-mates-skill/skills/team ~/.claude/skills/team
 Update with `git -C ~/team-mates-skill pull`.
 </details>
 
-**Requirements:** [Claude Code](https://code.claude.com), `git`, `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither pane tool. Optional: superpowers (brainstorming), humanizer, beautify-github-readme, diagram-design, caveman, the Chrome DevTools MCP with Google Chrome stable, the no-mistakes CLI, and `gh` for build runs that open PRs. Each is used when installed and skipped when not; `/team --help` lists what a run loses without each.
+**Requirements:** [Claude Code](https://code.claude.com), `git`, `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither pane tool. Optional: superpowers (brainstorming), humanizer, beautify-github-readme, diagram-design, caveman, the Chrome DevTools MCP with Google Chrome stable, the [no-mistakes](https://github.com/kunchenguid/no-mistakes) CLI, and `gh` for build runs that open PRs. Each is used when installed and skipped when not; [`/team --help`](skills/team/references/HELP.md#optional-dependencies) lists what a run loses without each.
 
 ## Try it
 
