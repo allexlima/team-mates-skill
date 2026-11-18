@@ -293,7 +293,10 @@ side's best evidence) · Dropped (refuted) · Next steps.
   mode, for two things: Edit/Write/MultiEdit/NotebookEdit on a path outside the teammate's
   worktree and run files, and git commands that skip hooks (`--no-verify`, `commit -n`, or
   core.hooksPath set with `-c`, `--config-env` or `GIT_CONFIG_*`, also after `-C <dir>`
-  or inside `sh -c`). Every other Bash write is still unfenced. The plugin is named
+  or inside `sh -c`), and `git config` writes of core.hooksPath. Every other Bash write is
+  still unfenced, and so are commands built by `eval`, backticks, `$(...)`, `xargs` or a
+  script file. The fence fails open: if `python3` is missing or the hook errors, the tool
+  runs. The plugin is named
   `team-mates-events`; an installed plugin with that name would be replaced for the session.
 - The hard cap is 8 teammates (spawn refuses beyond it).
 - Cost: every teammate is a full Claude session with its own context window,

@@ -79,6 +79,7 @@ check "fence: sibling prefix denied" 'mkdir -p "$W/wt2"; [ "$(fence "$R2" "{\"fi
 check "fence: notebook_path checked" '[ "$(fence "$R2" "{\"notebook_path\":\"$W/out/n.ipynb\"}")" = deny ]'
 check "fence: unset roots = no fence" '[ "$(fence "" "{\"file_path\":\"$W/out/b.txt\"}")" = allow ]'
 check "fence: no path = allow" '[ "$(fence "$R2" "{}")" = allow ]'
+check "fence: non-object payload = allow" '[ "$(printf "[]" | TEAM_FENCE_ROOTS="$R2" python3 -I "$F"; echo "rc=$?")" = "rc=0" ]'
 
 # Bash: git forms that skip hooks. Cases are data lines "want<TAB>command";
 # \n in a command is a real newline.
@@ -103,6 +104,16 @@ deny	command git -C . push --no-verify
 deny	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=x git commit
 deny	bash -c "git -C . commit --no-verify"
 deny	git status\ngit commit -n
+deny	bash -lc "git commit --no-verify"
+deny	sh -ec 'git commit -n'
+deny	git config core.hooksPath /dev/null
+deny	git -C . config --unset core.hooksPath
+deny	export GIT_CONFIG_PARAMETERS="'core.hooksPath=x'"; git commit
+deny	git commit --no-verif
+deny	git push --no-ver
+allow	git config --get core.hooksPath
+allow	git config user.name x
+allow	bash -l script.sh
 allow	git commit -mn
 allow	git commit -am "mention --no-verify in a message"
 allow	git commit -m x -- --no-verify

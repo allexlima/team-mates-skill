@@ -4,7 +4,9 @@
   the teammate worktree and its run files).
 - Bash: deny git commands that skip hooks: --no-verify (or commit -n), and core.hooksPath
   set through -c, --config-env or GIT_CONFIG_* variables. The git argv is parsed, so
-  `git -C <dir> ...` and `git -c k=v ...` forms are caught. Other Bash writes are not fenced.
+  `git -C <dir> ...` and `git -c k=v ...` forms are caught, as are `git config` writes of
+  core.hooksPath. Other Bash writes, and commands built by eval, backticks, $(...) or xargs,
+  are not fenced.
 Reads tool_input to decide and never logs it.
 """
 import json
@@ -12,11 +14,12 @@ import os
 import shlex
 import sys
 
-WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env"}
+WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath"
+CONFIG_READS = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list"}
 
 
 def deny(reason):
@@ -66,10 +69,12 @@ def git_problem(argv):
     if i >= len(argv):
         return None
     sub = argv[i]
+    if sub == "config" and any(map(hookspath, argv[i + 1:])) and not CONFIG_READS & set(argv[i + 1:]):
+        return HOOKS
     for a in argv[i + 1:]:
         if a == "--":
             break
-        if a == "--no-verify":
+        if len(a) >= 6 and "--no-verify".startswith(a):  # git accepts unambiguous prefixes
             return "git hooks must not be skipped (--no-verify)"
         if sub == "commit" and a.startswith("-") and not a.startswith("--"):
             for ch in a[1:]:
@@ -101,9 +106,9 @@ def check_command(cmd, depth=0):
             why = git_problem(argv)
             if why:
                 return why
-        elif name in SHELLS and "-c" in argv[1:] and depth < 3:
-            j = argv.index("-c", 1)
-            if j + 1 < len(argv):
+        elif name in SHELLS and depth < 3:
+            j = next((k for k, a in enumerate(argv) if k and a[:1] == "-" and a[1:2] != "-" and "c" in a), 0)
+            if j and j + 1 < len(argv):
                 why = check_command(argv[j + 1], depth + 1)
                 if why:
                     return why
@@ -116,6 +121,8 @@ if not roots:
 try:
     data = json.load(sys.stdin)
 except ValueError:
+    data = {}
+if not isinstance(data, dict):
     data = {}
 ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
 
