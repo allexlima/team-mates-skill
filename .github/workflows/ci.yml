@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    # Stable check names for branch protection: "gate (macos-latest)" and "gate (ubuntu-latest)".
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install tmux (ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Git identity for tests
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+      - name: Full gate set (CLAUDE.md list, minus the local-only facts-lint)
+        run: |
+          unset TEAM_MEMBER
+          bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
+          bash skills/team/scripts/team.sh doccheck
+          bash tests/roles.sh
+          bash tests/team-build.sh
+          bash tests/team-cli.sh
+          bash tests/status-render.sh
+          bash tests/team-finish.sh
+          bash tests/tmux.sh
+          bash tests/plugin-events.sh
