@@ -191,9 +191,13 @@ class History:
             title, tid, pct = m["title"], m.get("task"), m.get("pct")
             started = m["state"] == "WORKING" or pct is not None
             if tid in tasks and not tasks[tid]["done"] and tid not in self.task_start and started:
-                start = now if self._attached else now - (m.get("elapsed_min") or 0) * 60
-                self.task_start[tid] = start
-                self._write({"k": "start", "t": start, "task": tid})
+                # Attached mid-task: `elapsed_min` counts from the teammate's spawn, so it is this
+                # task's age only for a teammate on its first task. Otherwise the start is unknown.
+                first = not any(t["done"] and t["owner"] == title for t in tasks.values())
+                start = now if self._attached else (now - (m.get("elapsed_min") or 0) * 60 if first else None)
+                if start is not None:
+                    self.task_start[tid] = start
+                    self._write({"k": "start", "t": start, "task": tid})
             s = self.samples.setdefault(title, deque(maxlen=720))
             if pct is not None and tid and (not s or (s[-1][1], s[-1][2]) != (tid, pct)):
                 s.append((now, tid, pct))
@@ -281,11 +285,17 @@ def forecast(doc, hist, now):
         if not needs_met(tasks[tid]) and not pct:
             continue   # an idle teammate parked on a blocked task is not working on it yet
         start = hist.task_start.get(tid) if hist else None
+        unknown = False
         if start is None:
-            start = now - (m.get("elapsed_min") or 0) * 60
+            if any(t["done"] and t["owner"] == m["title"] for t in tasks.values()):
+                unknown, start = True, now   # spawn time says nothing about this task's age
+            else:
+                start = now - (m.get("elapsed_min") or 0) * 60
         spent = max(1.0, now - start)
         rem = None
-        if pct is not None and 0 < pct < 100:
+        if unknown:
+            pass   # no age to project from: the typical duration below stands in
+        elif pct is not None and 0 < pct < 100:
             lin = spent * (100 - pct) / pct
             rate = hist.rate(m["title"], tid, pct, now) if hist else None
             rem = lin if rate is None else 0.5 * lin + 0.5 * (100 - pct) / rate
@@ -293,7 +303,7 @@ def forecast(doc, hist, now):
                 projected.append(spent * 100 / pct)
         elif pct is not None and pct >= 100:
             rem = 0.0
-        active[tid] = [m["title"], rem, spent]
+        active[tid] = [m["title"], rem, spent, pct if unknown else None]
 
     observed = hist.durations() if hist else []
     pool = observed + projected
@@ -316,12 +326,13 @@ def forecast(doc, hist, now):
     out["typical"] = typ
     for tid, a in active.items():
         if a[1] is None:
-            a[1] = max(typ - a[2], 0.15 * typ)
+            left = typ * (100 - a[3]) / 100 if a[3] is not None else typ - a[2]
+            a[1] = max(left, 0.15 * typ)
 
     def schedule(dur, scale):
         free = {m["title"]: 0.0 for m in live}
         end = {tid: 0.0 for tid, t in tasks.items() if t["done"]}
-        for tid, (title, rem, _) in active.items():
+        for tid, (title, rem, *_) in active.items():
             end[tid] = rem * scale
             free[title] = max(free.get(title, 0.0), rem * scale)
         if not free:
@@ -505,8 +516,11 @@ class LiveSource:
         return out
 
     def show(self, role):
-        p = subprocess.run(["bash", self.team_sh, "show", self.team, role],
-                           capture_output=True, text=True, timeout=30)
+        try:
+            p = subprocess.run(["bash", self.team_sh, "show", self.team, role],
+                               capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as e:   # a slow cmux must not take the app down
+            return 1, [f"show failed: {type(e).__name__}"]
         return p.returncode, (p.stdout + p.stderr).strip().splitlines()[-1:] or [""]
 
 
@@ -749,6 +763,12 @@ def selftest():
            "summary": {"done": 0, "elapsed_min": 12}}
     fc = forecast(doc, History(), now)
     check("F6: lo <= eta <= hi", fc["lo"] <= fc["eta"] <= fc["hi"], fc)
+    # F8: a teammate on its 2nd task (spawned 60 min ago, T1 done) at 50%: the 60 min is not T2's age
+    doc = {"tasks": [mk("T1", "t-a", True), mk("T2", "t-a")], "teammates": [mate("t-a", "T2", 50, el=60)],
+           "summary": {"done": 1, "elapsed_min": 60}}
+    fc = forecast(doc, History(), now)
+    check("F8: second task at 50% projects from the typical duration (~30 min), not spawn age (~60)",
+          fc["eta"] is not None and abs(fc["eta"] - 1800) < 60, fc)
     # F7: a cycle in needs does not hang
     doc = {"tasks": [mk("T1", "any", needs=["T2"]), mk("T2", "any", needs=["T1"])], "teammates": [mate("t-a", None, None)],
            "summary": {"done": 1, "elapsed_min": 10}}
@@ -760,8 +780,12 @@ def selftest():
     h.observe(d1, now)
     d2 = {"tasks": [mk("T1", "t-a", True), mk("T2", "t-a", True)], "teammates": [mate("t-a", "T2", 100)]}
     ev = h.observe(d2, now + 300)
-    check("H1: unobserved T1 has no duration, observed T2 does", h.durations() == [300 + 600], h.durations())
+    check("H1: T2's start is unknown (t-a already finished T1 before attaching): no duration recorded", h.durations() == [], h.durations())
     check("H2: a task finishing emits a done event", any("T2 done" in e[2] for e in ev), ev)
+    h = History()   # a teammate on its first task: its spawn time is the task's start
+    h.observe({"tasks": [mk("T2", "t-b")], "teammates": [mate("t-b", "T2", 10)]}, now)
+    h.observe({"tasks": [mk("T2", "t-b", True)], "teammates": [mate("t-b", "T2", 100)]}, now + 300)
+    check("H2b: first-task teammate keeps the spawn-based start", h.durations() == [300 + 600], h.durations())
     # H3: recent rate
     h = History()
     for i, p in enumerate((10, 20, 30)):
