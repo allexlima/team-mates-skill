@@ -420,8 +420,9 @@ except Exception:
 # has no task lines (consumers then fall back to the teammate average). est=1 when any
 # self-reported % went into it. eta = elapsed x (100 - pct) / pct, only for 5 <= pct < 100.
 # A teammate's % goes to the task its status line names ("T3: ..."), else its first open task.
-# unassigned = open tasks whose needs are done and whose owner is `any` or not live.
-# ready_owners = comma-joined live owners that hold a ready task of their own.
+# unassigned = open tasks whose needs are done, whose owner is `any` or not live, and that no
+# live teammate has claimed by starting its status line with "T<n>:".
+# ready_owners = comma-joined live teammates that hold a ready task: their own line or a claimed one.
 # With a team (2nd arg) only tasks owned by <team>-* or `any` count: a tasks.md can carry
 # another team's lines.
 # ---------------------------------------------------------------------------

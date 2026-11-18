@@ -15,6 +15,14 @@ TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.s
 LIB="$(dirname "$TEAM_SH")/lib/status.sh"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0
+# tmo <secs> cmd...: GNU timeout, else gtimeout, else perl alarm (macOS CI has no coreutils); 124 on expiry.
+tmo() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"
+  else perl -e 'my $s = shift; my $p = fork; if (!$p) { exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill 15, $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0; exit($? >> 8)' "$@"
+  fi
+}
 pass() { echo "PASS  $1"; passes=$((passes+1)); }
 fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
 unset TEAM_MEMBER NO_COLOR TEAM_FORCE_COLOR TEAM_COLS
@@ -629,7 +637,7 @@ acreg="$TEAM_REG_DIR/team-ac.tabs"
 # for the pane on a completed run would make it vanish immediately.
 printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg"
 ( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_CLOSE_GRACE=0 \
-    timeout 4 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
+    tmo 4 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
 [ "$rc" = 124 ] \
   && pass "AC1: a run already all-finished keeps the monitor open (no self-close on open)" \
   || fail "AC1: closed on open" "exit=$rc (124 = still running, as required)"
@@ -639,7 +647,7 @@ printf 'cmux surface:170 pane ac-w - - %s %s live - -\n' "$RUNAC" "$G" > "$acreg
 ( sleep 2; printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg" ) &
 flip=$!
 acout=$( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_CLOSE_GRACE=0 \
-    timeout 12 bash "$TEAM_SH" status --watch ac 2>&1 ); rc=$?
+    tmo 12 bash "$TEAM_SH" status --watch ac 2>&1 ); rc=$?
 wait "$flip" 2>/dev/null || true
 { [ "$rc" = 0 ] && grep -q 'all teammates finished' <<<"$acout"; } \
   && pass "AC2: when the last teammate finishes the monitor announces it and exits 0" \
@@ -650,11 +658,16 @@ printf 'cmux surface:170 pane ac-w - - %s %s live - -\n' "$RUNAC" "$G" > "$acreg
 ( sleep 2; printf 'cmux surface:170 pane ac-w - - %s %s finished - -\n' "$RUNAC" "$G" > "$acreg" ) &
 flip=$!
 ( cd "$G" && TEAM_REG_DIR="$TEAM_REG_DIR" TEAM_STATUS_INTERVAL=1 TEAM_MONITOR_AUTOCLOSE=0 \
-    timeout 6 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
+    tmo 6 bash "$TEAM_SH" status --watch ac >/dev/null 2>&1 ); rc=$?
 wait "$flip" 2>/dev/null || true
 [ "$rc" = 124 ] \
   && pass "AC3: TEAM_MONITOR_AUTOCLOSE=0 keeps the pane open after everyone finishes" \
   || fail "AC3: opt-out ignored" "exit=$rc (124 = still running, as required)"
+
+# TM1: the perl fallback of tmo returns 124 on expiry and the command's own status otherwise
+rc1=$( (PATH="$W/nobin:/usr/bin:/bin"; mkdir -p "$W/nobin"; tmo 1 sleep 5; echo $?) 2>/dev/null | tail -1)
+rc2=$( (PATH="$W/nobin:/usr/bin:/bin"; tmo 5 sh -c 'exit 3'; echo $?) 2>/dev/null | tail -1)
+{ [ "$rc1" = 124 ] && [ "$rc2" = 3 ]; } && pass "TM1: tmo returns 124 on expiry and the command's status otherwise" || fail "TM1: tmo" "rc1=$rc1 rc2=$rc2"
 
 # AQ1 (A3): pressing q in a tty monitor exits 0. The EXIT trap read sub_status's locals after it
 # returned; under `set -u` that trap died ("km: unbound variable") and turned the exit into 1.
