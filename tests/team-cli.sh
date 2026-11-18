@@ -44,7 +44,27 @@ export PATH="$W/bin:$PATH"
 # Redirect registries to scratch dir (never touch /tmp/team-*.tabs of live projects)
 export TEAM_REG_DIR="$W/reg"
 unset TEAM_MEMBER   # inherited from a teammate pane it would make lead-title a no-op
-mkdir -p "$W/reg"
+mkdir -m 700 "$W/reg"
+
+# 0. TEAM_REG_DIR gets the same checks as the default private dir: a real directory we own, mode 700,
+#    not a symlink (created 0700 when missing); a relative TMPDIR never yields a cwd-relative registry.
+mkdir -m 700 "$W/rd-ok"; ln -s "$W/rd-ok" "$W/rd-link"; mkdir -m 755 "$W/rd-755"; : > "$W/rd-file"
+for case in rd-link rd-link/ rd-755 rd-file; do
+  out=$(TEAM_REG_DIR="$W/$case" bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
+  [ $rc = 3 ] && [[ $out == *"refusing registry dir"* ]] \
+    && pass "reg-dir: TEAM_REG_DIR $case refused" || fail "reg-dir: TEAM_REG_DIR $case refused" "rc=$rc out=${out:0:160}"
+done
+out=$(TEAM_REG_DIR="$W/rd-new" bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
+m=$(stat -f %Lp "$W/rd-new" 2>/dev/null || stat -c %a "$W/rd-new" 2>/dev/null || true)
+[[ $out != *"refusing"* ]] && [ "$m" = 700 ] \
+  && pass "reg-dir: missing TEAM_REG_DIR created 0700" || fail "reg-dir: missing TEAM_REG_DIR created 0700" "mode=$m out=${out:0:160}"
+mkdir -m 700 "$W/cwd"
+out=$(cd "$W/cwd" && TEAM_REG_DIR=rel-reg bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
+[ -d "$W/cwd/rel-reg" ] && [[ $out != *"refusing"* ]] \
+  && pass "reg-dir: relative TEAM_REG_DIR resolved once" || fail "reg-dir: relative TEAM_REG_DIR resolved once" "out=${out:0:160}"
+out=$(cd "$W/cwd" && env -u TEAM_REG_DIR TMPDIR=reltmp bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
+[ ! -e "$W/cwd/reltmp" ] && [[ $out != *"refusing"* ]] \
+  && pass "reg-dir: relative TMPDIR falls back to /tmp" || fail "reg-dir: relative TMPDIR falls back to /tmp" "out=${out:0:160} $(ls "$W/cwd")"
 
 # 1. Unknown subcommands never reach the spawn path (which opens a real pane).
 for args in "bogus" "bogus a b c" "spwan t r p.md sonnet" "--worktree t r p.md"; do

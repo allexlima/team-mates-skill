@@ -71,7 +71,7 @@ cat > "$W/home/.claude/settings.json" <<'JSON'
 JSON
 echo '{"projects":{}}' > "$W/home/.claude.json"
 export HOME="$W/home" TEAM_MODELS_FILE="$W/home/.claude/settings.json" TEAM_ROLES_DIR="$W/home/.claude/team/roles"
-export TEAM_REG_DIR="$W/regs"; mkdir -p "$TEAM_REG_DIR"
+export TEAM_REG_DIR="$W/regs"; mkdir -m 700 "$TEAM_REG_DIR"
 _git() { git -c user.email=t@t -c user.name=T "$@"; }
 R="$W/repo"; mkdir -p "$R"; _git -C "$R" init -q; _git -C "$R" commit -q --allow-empty -m init
 R=$(cd "$R" && pwd -P); RUN="$R/.team/runs/2026-11-17-x"; mkdir -p "$RUN/prompts" "$RUN/reports" "$RUN/status"

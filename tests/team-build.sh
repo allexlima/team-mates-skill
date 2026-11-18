@@ -110,7 +110,7 @@ export CMUX_SURFACE_ID="surface:lead"
 # Redirect registries and sysprompts to a scratch dir so tests never touch /tmp/team-*.tabs
 # from other live projects (cont2, tw1, w2c, etc.).
 export TEAM_REG_DIR="$W/regs"
-mkdir -p "$TEAM_REG_DIR"
+mkdir -m 700 "$TEAM_REG_DIR"
 
 # ── Git helpers ──
 _git() { git -c user.email=t@t -c user.name=T "$@"; }

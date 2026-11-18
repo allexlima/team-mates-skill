@@ -77,7 +77,7 @@ JSON
 echo '{"projects":{}}' > "$W/home/.claude.json"
 export HOME="$W/home" TEAM_MODELS_FILE="$W/home/.claude/settings.json" TEAM_ROLES_DIR="$W/home/.claude/team/roles"
 export CMUX_WORKSPACE_ID=ws-test CMUX_SURFACE_ID=surface:lead
-export TEAM_REG_DIR="$W/reg"; mkdir -p "$TEAM_REG_DIR"
+export TEAM_REG_DIR="$W/reg"; mkdir -m 700 "$TEAM_REG_DIR"
 
 _git() { git -c user.email=t@t -c user.name=T "$@"; }
 SID=11111111-2222-3333-4444-555555555555

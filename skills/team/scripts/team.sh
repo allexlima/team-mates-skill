@@ -159,11 +159,16 @@ _roles_lib() { echo "${TEAM_ROLES_DIR:-$HOME/.claude/team/roles}"; }
 # The registry dir holds every per-team state file (.tabs registry, .round and .sync sidecars, system
 # prompts, launchers) and trusts what it reads there, so by default it is a private per-user dir, not
 # bare /tmp: any local user could pre-create or symlink a name in a shared dir. TEAM_REG_DIR overrides
-# it (tests; the caller then owns its safety). Refuses unless the dir is a real directory we own, 0700.
+# it (tests) and gets the same checks. Refuses unless the dir is a real directory we own, 0700.
+# Relative paths would follow each caller's cwd: TEAM_REG_DIR is made absolute, a relative TMPDIR is ignored.
 _reg_dir() {
-  if [ -n "${TEAM_REG_DIR:-}" ]; then printf '%s\n' "$TEAM_REG_DIR"; return 0; fi
   local t=${TMPDIR:-/tmp} d m
+  case $t in /*) ;; *) t=/tmp ;; esac
   d="${t%/}/team-$EUID"
+  if [ -n "${TEAM_REG_DIR:-}" ]; then
+    d=$TEAM_REG_DIR; case $d in /*) ;; *) d="$PWD/$d" ;; esac
+    while [ "$d" != / ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done   # "link/" would pass [ -L ]
+  fi
   mkdir -m 700 "$d" 2>/dev/null || true
   m=$(stat -c %a "$d" 2>/dev/null || stat -f %Lp "$d" 2>/dev/null) || m=
   if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ] || [ "$m" != 700 ]; then

@@ -45,7 +45,7 @@ SH
 chmod +x "$W/bin/cmux"
 export PATH="$W/bin:$PATH"
 export HOME="$W/home"; mkdir -p "$HOME"
-export TEAM_REG_DIR="$W/reg"; mkdir -p "$TEAM_REG_DIR"
+export TEAM_REG_DIR="$W/reg"; mkdir -m 700 "$TEAM_REG_DIR"
 export CMUX_WORKSPACE_ID=ws-test CMUX_SURFACE_ID=surface:lead
 
 # Display width of stdin lines, one number per line (east-asian wide = 2, combining = 0).
