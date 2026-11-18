@@ -660,6 +660,8 @@ if [ "$sub" = doccheck ]; then
   for fl in $(sed -n '4p' "$here/../SKILL.md" | grep -oE '\-\-[a-z-]+'); do
     grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
   done
+  # npx skills stops discovery at a root SKILL.md, so the repo root must not hold one.
+  [ -e "$here/../../../SKILL.md" ] && { echo "doccheck: SKILL.md at the repo root hides skills/team/ from npx skills" >&2; rc=1; }
   [ "$rc" = 0 ] && echo "doccheck: ok"
   exit "$rc"
 fi

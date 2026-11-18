@@ -1092,6 +1092,12 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   out=$(bash "$TEAM_SH" doccheck 2>&1) && rc=0 || rc=$?
   [ "$rc" = 0 ] && pass "doccheck: passes cleanly" \
     || fail "doccheck: passes cleanly" "rc=$rc out=${out:0:200}"
+  # A root SKILL.md would hide skills/team/ from `npx skills`; doccheck must refuse it.
+  D="$W/dcroot"; mkdir -p "$D/skills"
+  cp -R "$(cd "$(dirname "$TEAM_SH")/.." && pwd)" "$D/skills/team"; : > "$D/SKILL.md"
+  out=$(bash "$D/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
+  [ "$rc" = 1 ] && [[ $out == *"repo root"* ]] && pass "doccheck: refuses a root SKILL.md" \
+    || fail "doccheck: refuses a root SKILL.md" "rc=$rc out=${out:0:200}"
 }
 
 # ══════════════════════════════════════════════════════════════════
