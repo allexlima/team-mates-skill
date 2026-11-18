@@ -17,7 +17,7 @@ import sys
 WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
-WRAPPER_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-n", "--adjustment"}
+WRAPPER_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-n", "--adjustment", "-P", "-a"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath"
 CONFIG_READS = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list"}

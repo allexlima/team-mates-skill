@@ -116,6 +116,8 @@ deny	env -u FOO git commit --no-verify
 deny	env -S "git commit --no-verify"
 deny	nice -n 5 git commit --no-verify
 deny	time -p git commit --no-verify
+deny	env -P /usr/bin git commit --no-verify
+deny	exec -a name git commit --no-verify
 allow	git commit \\n-m ok
 allow	git config --get core.hooksPath
 allow	git config user.name x
