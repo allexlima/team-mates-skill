@@ -5,8 +5,8 @@
 #
 # _validate_role_name <name>
 #   Shared name validator: kebab-case, no leading/trailing/double hyphens,
-#   not the reserved name 'monitor'. Exit 3 on any violation.
-#   Call this from every subcommand and from spawn in team.sh.
+#   not the reserved name 'monitor'. Returns 2 on any violation.
+#   Called by role, role-pull and role-promote; spawn in team.sh applies the same rule inline.
 #
 # sub_role <name>
 #   Print path of the role spec (project copy first, shared library fallback).

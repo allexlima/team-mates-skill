@@ -6,7 +6,7 @@
 # Requires team.sh globals/functions (bound before sourcing):
 #   $here              absolute dir of team.sh
 #   _root              prints main checkout root (main worktree)
-#   _reg <team>        prints /tmp/team-<team>.tabs
+#   _reg <team>        prints ${TEAM_REG_DIR:-/tmp}/team-<team>.tabs
 #   _reg_add <team> <ref> <layout> <title> <model|-> <submodel|-> <rundir|-> [<sid> <cwd>]
 #                      appends a registry row (root + state=live inserted automatically)
 #   _pane_of <ref>     prints cmux pane_ref or "gone" (cmux only)
@@ -28,7 +28,7 @@
 #         purpose by `team.sh finish`; its surface is gone by design, so it is never DEAD
 #   col 10 session id or "-"; col 11 cwd (last, may contain spaces)
 #
-# Module-level state (reset by each _st_table call):
+# Module-level state (reset by each _st_records call):
 #   _ST_UUID_MAP   "surface:N=UUID\n…" built from cmux list-panes (one python3 call)
 #   _ST_NOTIF_DATA "UUID|title|subtitle\n…" from cmux list-notifications --json
 #
@@ -46,7 +46,6 @@ _ST_NOTIF_DATA=
 _ST_C_ALERT='#FF453A'   # needs you / dead
 _ST_C_ACTIVE='#AF52DE'  # working
 _ST_C_DONE='#30D158'    # reported / finished
-_ST_C_DIM='#8E8E93'     # unknown / neutral
 # Sidebar sort priority; higher appears first. The shim's claude_code pill is 0.
 _ST_PILL_PRIORITY=50
 
@@ -1213,6 +1212,3 @@ _st_sync_apply() {
   # Write current state (never fatal)
   { printf '%s\n' "$pill"; printf '%s' "$cur_rows"; } > "$state_file" 2>/dev/null || true
 }
-
-# sub_sync_clear <team> — shorthand for close path in team.sh
-sub_sync_clear() { sub_sync --clear "${1:?team}"; }
