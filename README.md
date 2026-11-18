@@ -46,7 +46,7 @@ Update with `git -C ~/team-mates-skill pull`.
 ```
 
 <p align="center">
-  <img src="./assets/readme/help.gif" width="80%" alt="A terminal printing the usage and options block of /team --help: --roles, --rounds, --autoroles, --model, --tabs, --tmux, --no-gate, --no-caveman, --autoclose.">
+  <img src="./assets/readme/help.gif" width="80%" alt="A terminal printing the usage and options block of /team --help: --roles, --rounds, --autoroles, --model, --tabs, --tmux, --no-gate, --no-caveman, --autoclose, --inline, --no-monitor, --help.">
 </p>
 
 With `--autoroles`, the lead proposes roles from your repo and waits for your OK before starting anyone. Every flag and default is in `/team --help` ([HELP.md](skills/team/references/HELP.md)). Say **"shut down the team"** when you're done.

@@ -4,7 +4,7 @@ Output assets/readme/help.gif
 Set Shell "bash"
 Set FontSize 15
 Set Width 1000
-Set Height 560
+Set Height 580
 Set Padding 14
 Set Theme "Catppuccin Mocha"
 Set Framerate 8
@@ -16,6 +16,6 @@ Show
 Type "# the text /team --help prints"
 Enter
 Sleep 500ms
-Type "sed -n '9,26p' skills/team/references/HELP.md"
+Type "sed -n '/^## Usage/,/^    --help /p' skills/team/references/HELP.md"
 Enter
 Sleep 6s
