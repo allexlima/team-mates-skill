@@ -58,8 +58,62 @@ assert need<=set(h), need-set(h)
 for e,gs in h.items():
   for g in gs:
     for c in g["hooks"]:
+      if "fence.py" in c["command"]:
+        assert e=="PreToolUse" and g["matcher"]=="Edit|Write|MultiEdit|NotebookEdit|Bash", g; continue
       assert c["command"]==f"\"${{CLAUDE_PLUGIN_ROOT}}/hooks/event.sh\" {e}", c
 PY'
+# --- PreToolUse fence (fence.py) -------------------------------------------
+F="$P/hooks/fence.py"
+mkdir -p "$W/wt/sub" "$W/run" "$W/out"; ln -s "$W/out" "$W/wt/escape"
+fence() { # $1 roots, $2 tool_input json -> prints deny|allow
+  local o; o=$(printf '{"cwd":"%s","tool_name":"Write","tool_input":%s}' "$W/wt" "$2" | TEAM_FENCE_ROOTS="$1" python3 -I "$F")
+  case $o in *'"deny"'*) echo deny ;; '') echo allow ;; *) echo "odd:$o" ;; esac; }
+R2="$W/wt:$W/run"
+check "fence: inside worktree allowed" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/sub/a.txt\"}")" = allow ]'
+check "fence: run dir allowed" '[ "$(fence "$R2" "{\"file_path\":\"$W/run/r.md\"}")" = allow ]'
+check "fence: relative path resolved from cwd" '[ "$(fence "$R2" "{\"file_path\":\"sub/a.txt\"}")" = allow ]'
+check "fence: outside denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/out/b.txt\"}")" = deny ]'
+check "fence: .. escape denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/../out/b.txt\"}")" = deny ]'
+check "fence: symlinked dir escape denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/escape/b.txt\"}")" = deny ]'
+check "fence: sibling prefix denied" 'mkdir -p "$W/wt2"; [ "$(fence "$R2" "{\"file_path\":\"$W/wt2/x\"}")" = deny ]'
+check "fence: notebook_path checked" '[ "$(fence "$R2" "{\"notebook_path\":\"$W/out/n.ipynb\"}")" = deny ]'
+check "fence: unset roots = no fence" '[ "$(fence "" "{\"file_path\":\"$W/out/b.txt\"}")" = allow ]'
+check "fence: no path = allow" '[ "$(fence "$R2" "{}")" = allow ]'
+
+# Bash: git forms that skip hooks. Cases are data lines "want<TAB>command";
+# \n in a command is a real newline.
+gitcase() { # $1 want, $2 command
+  local o; o=$(python3 -I -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1].replace("\\n","\n")}}))' "$2" \
+    | TEAM_FENCE_ROOTS="$R2" python3 -I "$F")
+  case $o in *'"deny"'*) got=deny ;; '') got=allow ;; *) got="odd:$o" ;; esac
+  if [ "$got" = "$1" ]; then pass "fence git: $1 $2"; else fail "fence git: $1 $2" "got $got"; fi; }
+while IFS=$'\t' read -r want cmd; do [ -n "$want" ] && gitcase "$want" "$cmd"; done <<'CASES'
+deny	git -C /x commit --no-verify -m a
+deny	git -c core.hooksPath=/dev/null commit -m a
+deny	git -c Core.HooksPath=x commit
+deny	git -ccore.hooksPath=x commit
+deny	git --config-env=core.hooksPath=V commit
+deny	git --config-env core.hooksPath=V commit
+deny	git commit -nm msg
+deny	git commit -an
+deny	git status && git -C . commit --no-verify
+deny	cd x; /usr/bin/git commit --no-verify
+deny	env FOO=1 git commit --no-verify
+deny	command git -C . push --no-verify
+deny	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=x git commit
+deny	bash -c "git -C . commit --no-verify"
+deny	git status\ngit commit -n
+allow	git commit -mn
+allow	git commit -am "mention --no-verify in a message"
+allow	git commit -m x -- --no-verify
+allow	git push -n
+allow	git log -n 3
+allow	git -C /x commit -m ok
+allow	git -c user.name=x commit -m ok
+allow	echo git commit --no-verify
+allow	grep -rn no-verify .
+allow	git commit -m "unbalanced
+CASES
 check "writer is executable" '[ -x "$H" ]'
 
 echo; [ "$fails" = 0 ] && echo "all plugin-events tests passed" || { echo "$fails failed"; exit 1; }

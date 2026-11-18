@@ -288,6 +288,13 @@ side's best evidence) · Dropped (refuted) · Next steps.
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
   haiku tier; they are refused on build runs.
+- Every teammate loads the skill's `plugin/` folder for that session only (`--plugin-dir`;
+  nothing is written to your settings). Its PreToolUse fence is a hard block, even in auto
+  mode, for two things: Edit/Write/MultiEdit/NotebookEdit on a path outside the teammate's
+  worktree and run files, and git commands that skip hooks (`--no-verify`, `commit -n`, or
+  core.hooksPath set with `-c`, `--config-env` or `GIT_CONFIG_*`, also after `-C <dir>`
+  or inside `sh -c`). Every other Bash write is still unfenced. The plugin is named
+  `team-mates-events`; an installed plugin with that name would be replaced for the session.
 - The hard cap is 8 teammates (spawn refuses beyond it).
 - Cost: every teammate is a full Claude session with its own context window,
   so cost scales with team size. Prefer 2–3 sharp roles; the lead already fits a model
