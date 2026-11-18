@@ -23,15 +23,20 @@ sub_prompt() {
       *) echo "prompt: unknown option '$1'" >&2; return 2 ;;
     esac
   done
-  case $task in T[0-9]*) ;; *) echo "prompt: --task T<n> is required" >&2; return 2 ;; esac
+  [[ $task =~ ^T[0-9]+$ ]] || { echo "prompt: --task T<n> is required" >&2; return 2; }
   [ -n "$lead" ] || { echo "prompt: --lead <name> is required" >&2; return 2; }
   [ -f "$brief" ] || { echo "prompt: --brief <file> must be a readable file" >&2; return 2; }
   _validate_role_name "$role" || return $?
-  local root skilldir tpl
+  local root skilldir skillcmd tpl
   # $here is set by team.sh before it sources this lib
   root=$(_root)
   # shellcheck disable=SC2154
   skilldir=$(cd "$here/.." && pwd); tpl="$skilldir/references/prompt-template.md"
+  # The teammate allowlist pre-approves only the tilde form of the facts-lint and status commands, so the
+  # commands use it when the skill is installed there; file paths stay absolute (the Read tool needs that).
+  skillcmd=$skilldir
+  # shellcheck disable=SC2088 # the literal ~ is the point: the allowlist matches it
+  [ "$skilldir" = "$HOME/.claude/skills/team" ] && skillcmd='~/.claude/skills/team'
   [ -f "$tpl" ] || { echo "prompt: $tpl is missing" >&2; return 3; }
   if [ -z "$run" ]; then
     run=$(ls -d "$root"/.team/runs/*-"$team" 2>/dev/null | tail -1 || true)
@@ -73,11 +78,11 @@ $lens
   ' "$tpl" | BRIEF=$(cat "$brief") LENS=$lens python3 -c '
 import os, sys
 a = dict(team=sys.argv[1], role=sys.argv[2], lead=sys.argv[3], tl=sys.argv[4], root=sys.argv[5], run=sys.argv[6],
-         skilldir=sys.argv[7], task=sys.argv[8], worktree=sys.argv[9], branch=sys.argv[10], roster=sys.argv[11],
+         skilldir=sys.argv[7], skillcmd=sys.argv[14], task=sys.argv[8], worktree=sys.argv[9], branch=sys.argv[10], roster=sys.argv[11],
          gate_note=sys.argv[12], tl_note=sys.argv[13], brief=os.environ["BRIEF"], lens=os.environ["LENS"])
 s = sys.stdin.read()
 import re
 # One pass over the template, so text inside the brief or the role is never expanded again.
 print(re.sub(r"\{\{([a-z_]+)\}\}", lambda m: a.get(m.group(1), m.group(0)), s), end="")
-' "$team" "$role" "$lead" "$tl" "$root" "$run" "$skilldir" "$task" "$root/.team/worktrees/$team-$role" "$branch" "$roster" "$gate_note" "$tl_note"
+' "$team" "$role" "$lead" "$tl" "$root" "$run" "$skilldir" "$task" "$root/.team/worktrees/$team-$role" "$branch" "$roster" "$gate_note" "$tl_note" "$skillcmd"
 }

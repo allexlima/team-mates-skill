@@ -33,7 +33,12 @@ out=$(P --build --no-gate)
 case $out in *"don't push"*) case $out in *'gate it:'*) fail "P9: --no-gate leaves commits on the branch" ;; *) pass "P9: --no-gate leaves commits on the branch" ;; esac ;; *) fail "P9: --no-gate leaves commits on the branch" ;; esac
 out=$(P --tl tt-tl)
 case $out in *'(and to `tt-tl`)'*) pass "P10: --tl is copied on the report" ;; *) fail "P10: --tl is copied on the report" ;; esac
+# The tilde form for commands (the allowlist matches it) and an absolute path for files, when installed under ~/.claude.
+mkdir -p "$W/home/.claude/skills"; ln -s "$HERE/skills/team" "$W/home/.claude/skills/team"
+out=$(cd "$R" && HOME="$W/home" TEAM_ROLES_DIR="$W/nolib" bash "$W/home/.claude/skills/team/scripts/team.sh" prompt tt a --task T1 --lead l --brief "$W/brief.md" --build)
+case $out in *'bash ~/.claude/skills/team/scripts/team.sh facts-lint'*"$W/home/.claude/skills/team/references/git-practices.md"*) pass "P17: installed under ~/.claude: tilde command, absolute file path" ;; *) fail "P17: installed under ~/.claude: tilde command, absolute file path" ;; esac
 set +e
+P --task 'T1.*' >/dev/null 2>&1; rc=$?; [ "$rc" = 2 ] && pass "P18: a regex-looking --task exits 2" || fail "P18: a regex-looking --task exits 2" "rc=$rc"
 P --task T9 >/dev/null 2>&1; rc=$?; [ "$rc" = 2 ] && pass "P11: a task id not in tasks.md exits 2" || fail "P11: a task id not in tasks.md exits 2" "rc=$rc"
 (cd "$R" && bash "$TS" prompt tt a --lead l --brief "$W/brief.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 2 ] && pass "P12: missing --task exits 2" || fail "P12: missing --task exits 2" "rc=$rc"
 (cd "$R" && bash "$TS" prompt tt a --task T1 --lead l --brief "$W/none.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 2 ] && pass "P13: unreadable --brief exits 2" || fail "P13: unreadable --brief exits 2" "rc=$rc"
