@@ -64,9 +64,9 @@ $lens
   [ "$tl" != "$lead" ] && tl_note=" (and to \`$tl\`)"
 
   # Conditional blocks first ({{if X}} / {{else}} / {{end}}, nestable, one marker per line), then values.
-  awk -v build="$build" -v gate="$gate" -v hastl="$([ "$tl" != "$lead" ] && echo 1 || echo 0)" '
+  awk -v build="$build" -v gate="$gate" '
     function active(  i) { for (i = 1; i <= d; i++) if (!on[i]) return 0; return 1 }
-    /^\{\{if [a-z]+\}\}$/ { v = $0; gsub(/[{}]|if /, "", v); d++; on[d] = (v=="build" ? build : v=="gate" ? gate : v=="tl" ? hastl : 0); next }
+    /^\{\{if [a-z]+\}\}$/ { v = $0; gsub(/[{}]|if /, "", v); d++; on[d] = (v=="build" ? build : v=="gate" ? gate : 0); next }
     /^\{\{else\}\}$/ { on[d] = !on[d]; next }
     /^\{\{end\}\}$/ { d--; next }
     active() { print }
