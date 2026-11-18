@@ -688,7 +688,7 @@ if [ "$sub" = doccheck ]; then
     grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
   done
   # Every skill-relative path the docs and allowlists name must exist (files moved once already).
-  for rel in $(grep -rhoE '(~/\.claude/skills/team|<abs skill dir>)/[A-Za-z0-9_./-]+' "$here/.." | sed -E 's#^~/\.claude/skills/team/##; s#^<abs skill dir>/##' | sort -u); do
+  for rel in $(grep -rhoE '(~/\.claude/skills/team|<abs skill dir>)/[A-Za-z0-9_./-]+' "$here/.." | sed -E 's#^~/\.claude/skills/team/##; s#^<abs skill dir>/##; s#\.+$##' | sort -u); do
     [ -e "$here/../$rel" ] || { echo "doccheck: a doc names $rel, which is not in the skill" >&2; rc=1; }
   done
   # npx skills stops discovery at a root SKILL.md, so the repo root must not hold one.

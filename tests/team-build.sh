@@ -1150,6 +1150,12 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   out=$(bash "$D/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
   [ "$rc" = 1 ] && [[ $out == *"gone.md"* ]] && pass "doccheck: refuses a doc path that is not in the skill" \
     || fail "doccheck: refuses a doc path that is not in the skill" "rc=$rc out=${out:0:200}"
+  # A sentence-ending '.' after a real path is punctuation, not part of the path.
+  D2="$W/dcdot"; mkdir -p "$D2/skills"; cp -R "$(cd "$(dirname "$TEAM_SH")/.." && pwd)" "$D2/skills/team"
+  printf '\nRun ~/.claude/skills/team/scripts/team.sh.\n' >> "$D2/skills/team/SKILL.md"
+  out=$(bash "$D2/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
+  [ "$rc" = 0 ] && pass "doccheck: a trailing '.' after a path is punctuation" \
+    || fail "doccheck: a trailing '.' after a path is punctuation" "rc=$rc out=${out:0:200}"
 }
 
 # ══════════════════════════════════════════════════════════════════
