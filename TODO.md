@@ -10,6 +10,16 @@ Open items. Each one names where the work lives.
 - [ ] Run a full team in tmux with real `claude` sessions. The real-tmux test in
       `tests/tmux.sh` (X9) starts a fake `claude` that only sleeps.
 
+## Monitor
+
+- [ ] "stalled?" fires on teammates that are waiting inside a no-mistakes gate (a test step can
+      run 30 min), so the red alert becomes noise and hides a teammate that is really stuck.
+      Two options: (1) `teammate-rules.md` has the teammate write `gating <sha>` to its status
+      file right before `no-mistakes axi run`, and `lib/status.sh` gives that state a longer
+      stall threshold; (2) before marking "stalled?", `lib/status.sh` asks
+      `no-mistakes axi status` for the teammate's branch and treats a running gate as working.
+      (2) needs no teammate cooperation but costs a call per teammate per poll.
+
 ## Shell lint
 
 - [ ] v0.2.0: clean up `shellcheck -S warning`. shellcheck 0.11 reports 12 findings at that level
