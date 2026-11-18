@@ -18,7 +18,7 @@ fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
 # ── PATH stubs — never open real panes, sessions, or terminals ──
 mkdir -p "$W/bin"
 CMUX_LOG="$W/cmux.log"; CLAUDE_LOG="$W/claude.log"
-_reset_logs() { : > "$CMUX_LOG"; : > "$CLAUDE_LOG"; }
+_reset_logs() { : > "$CMUX_LOG" > "$CLAUDE_LOG"; }
 _reset_logs
 
 # cmux stub: configurable via env vars — never replace this file in tests; set env vars instead:
