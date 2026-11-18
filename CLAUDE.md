@@ -45,9 +45,10 @@ CI runs `doccheck` on every push and PR, so there is no local hook to enable.
 
 ## Branch workflow
 
-`main` is stable and released; `dev` is the integration branch. Both are
-protected: PR required, green CI required, no force-push or deletion, enforced
-for admins, 0 approvals.
+`main` is stable and released; `dev` is the integration branch. The
+maintainer sets branch protection on both (GitHub settings, not in this repo):
+PR required, green CI required, no force-push or deletion, enforced for
+admins, 0 approvals.
 
 1. Branch from `dev` as `feat/…`, `fix/…`, `docs/…`, `ci/…` or `chore/…`.
 2. Commit as `git-practices.md` says, one logical change each.
