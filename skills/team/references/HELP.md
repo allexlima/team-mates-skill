@@ -305,7 +305,7 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
   `_team_allow` list in team.sh): Read, Glob, Grep, Agent, SendMessage,
   ListAgents, and Edit/Write (on a build run, scoped to the teammate's own worktree plus its
-  report, status file and `tasks.md`; on other runs, any path).; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
+  report, status file and `tasks.md`; on other runs, any path); Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
   DevTools MCP tools (UI QA needs Google Chrome stable and the MCP enabled; see the
