@@ -186,6 +186,13 @@ in a summary line. You can also run `team.sh reap` at any time to see the list, 
 `team.sh reap --yes` to close without prompting. `--exclude <team>` skips the named
 team. Needs cmux or tmux; skipped under --inline.
 
+The registry and its sidecar files live in a private per-user dir, `${TMPDIR:-/tmp}/team-<uid>`
+(0700, owned by you, never a symlink), so where it is depends on `TMPDIR`: a lead started with a
+different `TMPDIR` does not see the other lead's teams. A relative `TMPDIR` is ignored (`/tmp`
+is used). `TEAM_REG_DIR` overrides the dir and gets the same checks; a relative value is made
+absolute. Registries an older version left in `/tmp/team-*.tabs` are not migrated or read:
+close such a team with the old copy of the skill, or move its files into the new dir by hand.
+
 ## Examples
     /team review PR #42 for security, performance and test coverage
     /team why does the streaming job lag? --roles 4 --rounds 2 --model sonnet
@@ -277,7 +284,8 @@ side's best evidence) · Dropped (refuted) · Next steps.
 
 ## Optional dependencies
 Everything below is used when installed and skipped when not. A run never fails for a missing
-one; it loses only what the table says.
+one; it loses only what the table says. `caveman` and `no-mistakes` are used every time they are
+available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
 
 | Dependency | Used for | Without it |
 |---|---|---|
@@ -292,8 +300,9 @@ one; it loses only what the table says.
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
-  `_team_allow` list in team.sh): Read, Glob, Grep, Edit, Write, Agent, SendMessage,
-  ListAgents; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
+  `_team_allow` list in team.sh): Read, Glob, Grep, Agent, SendMessage,
+  ListAgents, and Edit/Write (on a build run, scoped to the teammate's own worktree plus its
+  report, status file and `tasks.md`; on other runs, any path); Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
   DevTools MCP tools (UI QA needs Google Chrome stable and the MCP enabled; see the
@@ -301,7 +310,9 @@ one; it loses only what the table says.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run.
+  still run. One hard block: `git commit --no-verify` (and `-n`) is denied for every teammate
+  through `--disallowedTools`, since it skips the secret-scanning hooks; a combined short flag
+  such as `-an` is not caught.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
