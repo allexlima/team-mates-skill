@@ -17,6 +17,7 @@ import sys
 WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
+WRAPPER_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-n", "--adjustment"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath"
 CONFIG_READS = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list"}
@@ -37,7 +38,7 @@ def hookspath(text):
 
 def segments(cmd):
     """Split a shell command into simple-command argvs at ; & | ( ) and newlines."""
-    lex = shlex.shlex(cmd.replace("\n", " ; "), posix=True, punctuation_chars=True)
+    lex = shlex.shlex(cmd.replace("\\\n", "").replace("\n", " ; "), posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     seg = []
     for tok in lex:
@@ -96,9 +97,14 @@ def check_command(cmd, depth=0):
             head = argv.pop(0)
             if head.startswith("GIT_CONFIG") and hookspath(head):
                 return HOOKS
-            if head == "env":
-                while argv and argv[0].startswith("-"):
-                    argv.pop(0)
+            while argv and argv[0].startswith("-") and len(argv[0]) > 1:
+                opt = argv.pop(0)
+                if opt in WRAPPER_VALUE_OPTS and argv:
+                    val = argv.pop(0)
+                    if opt in ("-S", "--split-string") and depth < 3:
+                        why = check_command(val, depth + 1)
+                        if why:
+                            return why
         if not argv:
             continue
         name = os.path.basename(argv[0])

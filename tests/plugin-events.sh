@@ -111,6 +111,12 @@ deny	git -C . config --unset core.hooksPath
 deny	export GIT_CONFIG_PARAMETERS="'core.hooksPath=x'"; git commit
 deny	git commit --no-verif
 deny	git push --no-ver
+deny	git commit \\n--no-verify -m x
+deny	env -u FOO git commit --no-verify
+deny	env -S "git commit --no-verify"
+deny	nice -n 5 git commit --no-verify
+deny	time -p git commit --no-verify
+allow	git commit \\n-m ok
 allow	git config --get core.hooksPath
 allow	git config user.name x
 allow	bash -l script.sh
