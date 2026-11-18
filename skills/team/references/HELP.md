@@ -240,9 +240,10 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     working      Doing its work (a note says "report on disk" once it has reported)
     idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
                  so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
-                 Exception: while a ready task has no owner, or the idle teammate holds a
-                 ready task of its own, it is pinned as "idle with work pending" — hand it
-                 that task.
+                 Exception: it is pinned as "idle with work pending" while an unassigned
+                 ready task exists (owner `any` or not live), or while the idle teammate has
+                 a ready task on its own line — hand it that task. A ready task a live
+                 teammate claims by starting its status line with "T<n>:" counts as assigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
   Live teammates' state comes from the cmux hooks the claude shim injects — no screen
@@ -262,7 +263,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   `TEAM_MONITOR_CLOSE_GRACE` sets the delay). It only closes on that *transition*: opening
   the monitor on an already-finished run leaves it up.
   Only task lines owned by `<team>-*` or `any` count, so another team's lines in a shared
-  tasks.md are ignored.
+  tasks.md are ignored (a sibling team whose slug extends this one is not counted either).
   The headline % is **overall task progress**: done tasks in tasks.md, plus each open task's
   share as its owner reports it on its status line (`T3: drafting · 40%` credits T3; with no
   `T<n>:` prefix it credits the teammate's first open task). A `~` in front means
