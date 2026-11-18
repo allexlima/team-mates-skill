@@ -23,8 +23,11 @@ Open items. Each one names where the work lives.
 
 ## Permissions
 
-- [ ] Outside a build run, non-haiku teammates still get bare Edit and Write (any path); scope them
-      to the teammate's owned files.
+- [ ] `_team_allow` (`skills/team/scripts/team.sh`) approves Edit and Write on any path. Scope them to the
+      teammate's worktree or owned files once the worktree path is known before the permission
+      block.
+- [ ] `git commit --no-verify` is blocked only by a rule in `skills/team/references/teammate-rules.md`. Look at a
+      `--disallowedTools` entry for it, since it skips secret-scanning hooks.
 
 ## Security
 
@@ -33,6 +36,9 @@ we own it), so the `.tabs` registry and its sidecars are no longer in a shared d
 
 - [ ] No test uses a second user, so "a registry dir owned by someone else is refused" is checked
       only by reading `_reg_dir` (`[ -O ]`), not by running it. Needs a second account or root.
+- [ ] An explicit `TEAM_REG_DIR` is trusted as given. If someone points it at a shared dir
+      (e.g. `/tmp`), the old predictable-name risk is back for the `.tabs`, `.round`, `.sync` and
+      `$reg.tmp` files; the launcher and system prompt are safe there (mktemp).
 - [ ] Registries and sidecars an older version left in `/tmp/team-*.tabs` are ignored, not
       migrated: `reap` and `status` look only in the new dir. Close such a team with the old copy,
       or move its files into the new dir by hand.
