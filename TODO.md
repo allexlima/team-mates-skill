@@ -61,17 +61,20 @@ Cleanup). What is left:
 
 ## Hook fence and cleanup
 
-Reported by tm2-hooks (branch `feat/hook-spawn`, not yet in `dev`); not re-checked here.
+Reported by tm2-hooks (`feat/hook-spawn`, `feat/hook-fence`; not yet in `dev`); the fence list was probed by tm2-hooks against its tip, not re-checked here.
 
 - [ ] `team.sh clean` removes a team's per-teammate `.scratch` dirs and `.sysprompt.md` files from
       the registry dir (21058af). It still leaves the team's `.sync` sidecar and the launcher files.
       Decide whether `close` or `clean` owns removing `.sync`.
 - [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
-- [ ] The PreToolUse fence covers only Edit/Write and the listed git forms. It does not cover
-      `eval`, backticks, `$(...)`, `xargs`, a changed `HOME` or
-      `XDG_CONFIG_HOME`, aliases already in the user's git config, GNU `time --output`, or any
-      other Bash write. A real Bash sandbox is still open.
+- [ ] The PreToolUse fence (feat/hook-fence @8018736) covers Edit/Write/MultiEdit/NotebookEdit
+      paths and the git hook-skip forms, including global options, `sudo`, `env -S`, `$(...)`
+      and `time --output`. Still allowed: `eval "git commit ..."`, backticks, `xargs git commit`,
+      `HOME=<dir>` or `XDG_CONFIG_HOME=<dir>` pointing git at another global config, aliases in
+      the user's own git config (`ci=commit -n`), git run from another interpreter
+      (`python3 -c "os.system(...)"`), and every other Bash write (`echo hi > /tmp/file`). A real
+      Bash sandbox is still open.
 
 ## Roles
 
