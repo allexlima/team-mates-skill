@@ -192,6 +192,8 @@ different `TMPDIR` does not see the other lead's teams. A relative `TMPDIR` is i
 is used). `TEAM_REG_DIR` overrides the dir and gets the same checks; a relative value is made
 absolute. Registries an older version left in `/tmp/team-*.tabs` are not migrated or read:
 close such a team with the old copy of the skill, or move its files into the new dir by hand.
+A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 with
+"refusing registry dir"; a missing `TEAM_REG_DIR` is created 0700.
 
 ## Examples
     /team review PR #42 for security, performance and test coverage
@@ -293,9 +295,9 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
 | `humanizer:humanizer` skill | Smoothing user-facing prose (synthesis, PR text, docs) | Prose ships as drafted; read it for stock AI phrasing yourself |
 | `beautify-github-readme` skill | README redesign | The README is written plainly, with no generated hero or section art |
 | `diagram-design` skill | Diagrams | Use a Mermaid or ASCII diagram |
-| `caveman` skill (`~/.agents/skills/caveman`) | Terse teammate output, saves tokens | Teammates write normal prose, as with `--no-caveman` |
+| `caveman` skill (found in `<project>/.claude/skills`, `~/.claude/skills`, `~/.agents/skills`, then any installed plugin's `skills/caveman` or `skills/caveman-mode`) | Terse teammate output, saves tokens | Teammates write normal prose, as with `--no-caveman` |
 | Chrome DevTools MCP + Google Chrome stable | UI QA by teammates | The report says "UI checks not done: no browser tools"; UI claims stay unverified |
-| `no-mistakes` CLI | The build-run gate that pushes and opens each PR | No gate, as with `--no-gate`: commits stay local; the lead or TL pushes and opens the PRs by hand |
+| `no-mistakes` CLI | The build-run gate that pushes and opens each PR; a `--worktree` spawn warns when it is installed but the repo has no gate (run `team.sh gate-init`) | No gate, as with `--no-gate`: commits stay local; the lead or TL pushes and opens the PRs by hand |
 
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
