@@ -313,11 +313,14 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted paths go to the auto classifier. One hard block: `git commit --no-verify` (and `-n`) is denied for every teammate
-  through `--disallowedTools`, since it skips the secret-scanning hooks; a combined short flag
-  such as `-an` is not caught, and no deny rule matches a git command that starts with a global
-  option, so `git -C <dir> commit --no-verify` and `git -c core.hooksPath=/dev/null commit` are
-  not blocked (measured with live `claude -p` probes, CLI 2.1.306).
+  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted paths go to the auto classifier. One partial block: `git commit --no-verify` (and `-n`) is denied for every teammate
+  through `--disallowedTools`, since it skips the secret-scanning hooks. It is not a complete
+  fence: the deny rules do not match a git command that starts with a global option
+  (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
+  (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
+  `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
+  also fails safe the other way: a commit whose inline `-m` message names the flag is refused,
+  so write such a message to a file and use `git commit -F <file>`.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on

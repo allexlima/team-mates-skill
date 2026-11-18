@@ -70,7 +70,8 @@ the slowest teammate sets the pace for the whole team.
   pre-approved. Pushes, `gh` writes, package installs, deploys and anything destructive are
   not yours to run: SendMessage the tech-lead (or the lead, when there is no TL) the exact
   command and why, then carry on with other work. Never pass `--no-verify` to `git commit`:
-  it skips the hooks that scan for secrets.
+  it skips the hooks that scan for secrets. If a commit message has to name that flag (or contain " -n"),
+  the deny rules refuse the inline `-m`: write the message to a file and use `git commit -F <file>`.
 - **Writing tools.** If available, run prose a person will read (reports to the user, PR descriptions, docs)
   through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
   diagram with `diagram-design`; if not, write plainly and use Mermaid or ASCII for diagrams. On a build run, commit and open PRs the way
