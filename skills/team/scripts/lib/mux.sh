@@ -72,7 +72,9 @@ _mux_open() {
       # exclusively (0600, unique name): the registry dir defaults to world-writable /tmp, where a
       # fixed name could be a pre-made file or symlink that we would then write and run.
       local launch; launch=$(mktemp "$(_reg_dir)/team-$title.launch.XXXXXX") || return 1
-      printf '%s\n' "$cmd" > "$launch" || return 1
+      # It deletes itself first: nothing else would. bash keeps the open script readable after its
+      # name is unlinked, so the claude line below still runs.
+      printf '%s\n%s\n' 'rm -f -- "$0"' "$cmd" > "$launch" || return 1
       cmd="bash $(printf %q "$launch")"
       case $lay in
         tab) out=$(cmux new-surface --type terminal --workspace "$CMUX_WORKSPACE_ID" --command "$cmd" --focus false) || return 1 ;;

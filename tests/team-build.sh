@@ -29,7 +29,7 @@ _reset_logs
 cat > "$W/bin/cmux" <<'SH'
 #!/usr/bin/env bash
 # A pane's --command is `bash <launch file>`; log the file's text after " :: " so greps see the claude command.
-log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(cat "${a#bash }")"; prev="$a"; done
+log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(tr '\n' ' ' < "${a#bash }")"; prev="$a"; done
 printf '%s\n' "$log" >> "$CMUX_LOG"
 n=$(wc -l < "$CMUX_LOG" 2>/dev/null || echo 1)
 case "$1" in
@@ -249,6 +249,13 @@ _mkrun() {
   [ "$(cat "$W/t12-victim")" = SENTINEL ] && [ "$lpath" != "$TEAM_REG_DIR/team-$TM-longrole.launch.sh" ] \
     && pass "T12: a symlink at the old predictable launcher name is not followed" \
     || fail "T12: a symlink at the old predictable launcher name is not followed" "victim=$(cat "$W/t12-victim") path=$lpath"
+  # T12: nothing else removes the launcher, so it deletes itself first, and the claude line after
+  # the rm must still run (the stub claude logs its argv).
+  _reset_logs
+  bash "$lpath" >/dev/null 2>&1; lrc=$?
+  [ ! -e "$lpath" ] && grep -q -- '--model sonnet' "$CLAUDE_LOG" \
+    && pass "T12: the launcher removes itself and still runs claude" \
+    || fail "T12: the launcher removes itself and still runs claude" "rc=$lrc exists=$([ -e "$lpath" ] && echo yes || echo no) claude=$(head -c 120 "$CLAUDE_LOG")"
 }
 
 # ══════════════════════════════════════════════════════════════════

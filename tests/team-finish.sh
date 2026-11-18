@@ -24,7 +24,7 @@ CMUX_LOG="$W/cmux.log"; : > "$CMUX_LOG"
 cat > "$W/bin/cmux" <<'SH'
 #!/usr/bin/env bash
 # A pane's --command is `bash <launch file>`; log the file's text after " :: " so greps see the claude command.
-log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(cat "${a#bash }")"; prev="$a"; done
+log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(tr '\n' ' ' < "${a#bash }")"; prev="$a"; done
 printf '%s\n' "$log" >> "$CMUX_LOG"
 n=$(wc -l < "$CMUX_LOG" | tr -d ' ')
 surf=""; prev=""
