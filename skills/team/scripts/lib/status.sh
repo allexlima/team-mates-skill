@@ -209,7 +209,7 @@ _st_row() {
   local elapsed=-1
   local spf; spf="$(dirname "$(_reg "$team")")/team-$team-$role.sysprompt.md"
   if [ -f "$spf" ]; then
-    local st; st=$(stat -f %m "$spf" 2>/dev/null || stat -c %Y "$spf" 2>/dev/null) || true
+    local st; st=$(stat -c %Y "$spf" 2>/dev/null || stat -f %m "$spf" 2>/dev/null) || true
     if [ -n "${st:-}" ]; then
       local n2; n2=$(date +%s); elapsed=$(( (n2 - st) / 60 ))
     fi
@@ -220,7 +220,7 @@ _st_row() {
   local f t
   for f in "$rpt" "$stf"; do
     [ -n "$f" ] && [ -f "$f" ] || continue
-    t=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null) || continue
+    t=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
     [ "$t" -gt "$newest" ] && newest=$t
   done
   if [ "$newest" -gt 0 ]; then
@@ -415,16 +415,21 @@ except Exception:
 # ---------------------------------------------------------------------------
 # _st_summary <run-dir>: teammate records on stdin -> one @summary record, the single
 # owner of the overall % and team ETA (the pane and the sidebar both read it):
-#   @summary done total pct est elapsed_min eta_min pending unassigned prs
+#   @summary done total pct est elapsed_min eta_min pending unassigned prs [ready_owners]
 # pct = (done tasks + each open task's owner-reported %) / total tasks; -1 when tasks.md
 # has no task lines (consumers then fall back to the teammate average). est=1 when any
 # self-reported % went into it. eta = elapsed x (100 - pct) / pct, only for 5 <= pct < 100.
 # A teammate's % goes to the task its status line names ("T3: ..."), else its first open task.
-# unassigned = open tasks whose needs are done and whose owner is `any` or not live.
+# unassigned = open tasks whose needs are done, whose owner is `any` or not live, and that no
+# live teammate has claimed by starting its status line with "T<n>:".
+# ready_owners = comma-joined live teammates that hold a ready task: their own line or a claimed one.
+# With a team (2nd arg) only tasks owned by <team>-* or `any` count: a tasks.md can carry
+# another team's lines.
 # ---------------------------------------------------------------------------
 read -r -d '' _ST_SUMMARY_PY <<'PY' || true
 import glob, os, re, sys
 run = sys.argv[1]
+team = sys.argv[2] if len(sys.argv) > 2 else ''
 recs = {}
 for line in sys.stdin:
     f = line.rstrip('\n').split('\t')
@@ -449,6 +454,14 @@ for n, l in enumerate(lines, 1):
     m = re.match(r'\s*- \[([ xX])\] (\S+):', l)
     if m:
         tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', []])
+if team:
+    # A sibling run dir <date>-<slug> with slug starting "<team>-" is another team whose
+    # owners (<slug>-role) would otherwise pass the prefix test; live records still count.
+    others = [m.group(1) for d in glob.glob(os.path.join(os.path.dirname(run.rstrip('/')), '*'))
+              for m in [re.match(r'\d{4}-\d\d-\d\d-(.+)$', os.path.basename(d))]
+              if m and m.group(1) != team and m.group(1).startswith(team + '-')]
+    tasks = [t for t in tasks if t[1] == 'any' or t[1] in recs
+             or (t[1].startswith(team + '-') and not any(t[1].startswith(o + '-') for o in others))]
 done_ids = {t[0] for t in tasks if t[2]}
 total, done = len(tasks), len(done_ids)
 credit, est, used = 0, 0, set()
@@ -466,17 +479,22 @@ elapsed = max([r['elapsed'] for r in recs.values()] + [0])
 eta = elapsed * (100 - pct) // pct if 5 <= pct < 100 and elapsed > 0 else -1
 live = {t for t, r in recs.items() if r['state'] != 'FINISHED'}
 pending = [t for t in tasks if not t[2]]
-unassigned = sum(1 for t in pending if all(d in done_ids for d in t[3])
-                 and (t[1] == 'any' or t[1] not in live))
+# a task a live teammate names in its status prefix ("T3: ...") is taken, whoever owns the line
+claimed = {m.group(1): t for t, r in recs.items() if t in live
+           for m in [re.match(r'\s*(T\d+):', r['step'])] if m}
+holders = [claimed.get(t[0]) or (t[1] if t[1] in live else None)
+           for t in pending if all(d in done_ids for d in t[3])]
+unassigned = holders.count(None)
+ready_owners = sorted({h for h in holders if h})
 prs = set()
 for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
     try:
         prs |= set(re.findall(r'https://[^\s)>\]]+/pull/\d+', open(rp, encoding='utf-8', errors='replace').read()))
     except OSError:
         pass
-print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs)])))
+print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
 PY
-_st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}"; }
+_st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
 
 # ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
@@ -573,6 +591,7 @@ for line in sys.stdin:
         try:
             S = dict(zip(('done', 'total', 'pct', 'est', 'elapsed', 'eta', 'pending',
                           'unassigned', 'prs'), map(int, f[1:10])))
+            S['ready'] = set(f[10].split(',')) if len(f) > 10 else set()
         except ValueError:
             S = None
         continue
@@ -640,10 +659,10 @@ full, empty = ('#', '-') if ascii_ else ('█', '░')
 out.append(paint(full * filled, 'done') + paint(empty * (barw - filled), 'dim') + label)
 out.append('')
 
-# An idle teammate while a ready task has no owner is the waste the user cares about.
-if S and S['unassigned'] > 0:
+# An idle teammate while a ready task has no owner, or while it holds a ready task itself, is the waste the user cares about.
+if S and (S['unassigned'] > 0 or S['ready']):
     for r in recs:
-        if r['state'] == 'IDLE':
+        if r['state'] == 'IDLE' and (S['unassigned'] > 0 or r['title'] in S['ready']):
             r['note'], r['alert'] = 'idle with work pending', True
 alerts = [r for r in recs if STATES[r['state']][3] == 'alert' or r.get('alert')]
 # Finished teammates have no pane; they fold into one line under the live rows.
@@ -832,7 +851,7 @@ _st_collect() {
   [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
   local recs; recs=$(_st_records "$reg" "$run" "$leadpane" "$team")
   [ -z "$recs" ] || printf '%s\n' "$recs"
-  printf '%s\n' "$recs" | _st_summary "${run:--}" 2>/dev/null || true
+  printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -875,9 +894,11 @@ sub_status() {
     # (shift+drag still selects). TEAM_MONITOR_MOUSE=0 opts out and keeps the keys.
     [ "${TEAM_MONITOR_MOUSE:-1}" != 0 ] && mouse=1
     # Leave the terminal as we found it on every exit path, mouse mode included.
-    trap 'rm -f "$km" 2>/dev/null
-          [ "$mouse" = 1 ] && printf "\033[?1006l\033[?1000l"
-          stty echo 2>/dev/null; printf "\033[?25h"' EXIT INT TERM
+    # The trap runs after sub_status returned, when its locals are gone (set -u would kill it and
+    # turn a clean exit into 1), so the values are baked into the string now.
+    trap "rm -f -- $(printf %q "$km") 2>/dev/null
+          [ $mouse = 1 ] && printf '\\033[?1006l\\033[?1000l'
+          stty echo 2>/dev/null; printf '\\033[?25h'" EXIT INT TERM
     [ "$mouse" = 1 ] && printf '\033[?1000h\033[?1006h'
     # Input arriving while we render (between `read` calls) would otherwise be
     # echoed into the frame by the tty driver -- mouse reports as raw escapes.
