@@ -275,6 +275,20 @@ team. Needs cmux or tmux; skipped under --inline.
 Consensus (findings that survived challenge, with evidence) · Disputed (each
 side's best evidence) · Dropped (refuted) · Next steps.
 
+## Optional dependencies
+Everything below is used when installed and skipped when not. A run never fails for a missing
+one; it loses only what the table says.
+
+| Dependency | Used for | Without it |
+|---|---|---|
+| `superpowers:brainstorming` skill | The lead's step-1 brainstorm | The lead asks the same questions (outcome, audience, success) with AskUserQuestion directly |
+| `humanizer:humanizer` skill | Smoothing user-facing prose (synthesis, PR text, docs) | Prose ships as drafted; read it for stock AI phrasing yourself |
+| `beautify-github-readme` skill | README redesign | The README is written plainly, with no generated hero or section art |
+| `diagram-design` skill | Diagrams | Use a Mermaid or ASCII diagram |
+| `caveman` skill (`~/.agents/skills/caveman`) | Terse teammate output, saves tokens | Teammates write normal prose, as with `--no-caveman` |
+| Chrome DevTools MCP + Google Chrome stable | UI QA by teammates | The report says "UI checks not done: no browser tools"; UI claims stay unverified |
+| `no-mistakes` CLI | The build-run gate that pushes and opens each PR | No gate: the lead or TL pushes and opens the PRs by hand, as with `--no-gate` |
+
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the

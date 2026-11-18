@@ -71,9 +71,9 @@ the slowest teammate sets the pace for the whole team.
   not yours to run: SendMessage the tech-lead (or the lead, when there is no TL) the exact
   command and why, then carry on with other work. Never pass `--no-verify` to `git commit`:
   it skips the hooks that scan for secrets.
-- **Writing tools.** Run prose a person will read (reports to the user, PR descriptions, docs)
+- **Writing tools.** If available, run prose a person will read (reports to the user, PR descriptions, docs)
   through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
-  diagram with `diagram-design`. On a build run, commit and open PRs the way
+  diagram with `diagram-design`; if not, write plainly and use Mermaid or ASCII for diagrams. On a build run, commit and open PRs the way
   `~/.claude/skills/team/references/git-practices.md` says.
 - **Send questions to the lead, not your own pane.** When you need the user's input, a
   decision, or sign-off on an approach, do NOT use AskUserQuestion or wait silently in your
