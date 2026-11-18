@@ -45,10 +45,14 @@
 #   team.sh role-promote <name> [--force]  -> copy a project role into the shared library, secret/PII scan first;
 #                                             library ahead always refuses (run role-pull).
 #                                             exit 0 ok/no-op, 2 bad name/option or PII hit, 3 not in project, 5 conflict (needs --force)
-#   team.sh status [--watch] <team>        -> one frame: "<team> · N/M reported · HH:MM:SS", a progress bar, a NEEDS YOU block
+#   team.sh status [--watch | --json [--sync]] <team>
+#                                          -> one frame: "<team> · N/M reported · HH:MM:SS", a progress bar, a NEEDS YOU block
 #                                             (only when a teammate is waiting/dead/model gone/stalled?), then ROLE | STATE | STEP | AGE;
 #                                             --watch repaints only on change, syncs the sidebar each tick and exits once
-#                                             the registry is removed. Width: TEAM_COLS, else tput cols. exit 3 no registry
+#                                             the registry is removed; in a terminal it runs the TUI monitor (monitor_tui.py)
+#                                             when Textual or uv is available (TEAM_MONITOR_UI=classic: never).
+#                                             --json: the same state as one JSON document (version 1; keys are only added),
+#                                             --sync also updates the sidebar. Width: TEAM_COLS, else tput cols. exit 3 no registry
 #   team.sh monitor <team>                 -> open one pane running `status --watch` (layout dash, title
 #                                             <team>-monitor; not a teammate, not in the cap; `close` closes it).
 #                                             exit 1 already running

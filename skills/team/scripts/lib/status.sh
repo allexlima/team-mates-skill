@@ -425,11 +425,15 @@ except Exception:
 # ready_owners = comma-joined live teammates that hold a ready task: their own line or a claimed one.
 # With a team (2nd arg) only tasks owned by <team>-* or `any` count: a tasks.md can carry
 # another team's lines.
+# With `json <registry>` after <run-dir> <team> it prints one JSON document instead (the
+# `status --json` contract the TUI monitor reads): the same summary, plus every teammate
+# joined with its registry row and every parsed task. One parser for tasks.md, two outputs.
 # ---------------------------------------------------------------------------
 read -r -d '' _ST_SUMMARY_PY <<'PY' || true
-import glob, os, re, sys
+import glob, json, os, re, sys, time
 run = sys.argv[1]
 team = sys.argv[2] if len(sys.argv) > 2 else ''
+mode = sys.argv[3] if len(sys.argv) > 3 else 'summary'
 recs = {}
 for line in sys.stdin:
     f = line.rstrip('\n').split('\t')
@@ -438,8 +442,9 @@ for line in sys.stdin:
     def num(x):
         try: return int(x)
         except ValueError: return -1
-    recs[f[1]] = dict(state=f[2], ms=f[3], step=f[4], pct=num(f[7]), elapsed=num(f[8]))
-tasks = []   # [id, owner, done, needs]
+    recs[f[1]] = dict(role=f[0], state=f[2], ms=f[3], step=f[4], age=num(f[5]),
+                      note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]))
+tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
 except OSError:
@@ -449,11 +454,11 @@ for n, l in enumerate(lines, 1):
     if m:
         nd = re.search(r'needs:\s*(.*)$', m.group(4) or '')
         tasks.append([m.group(2), m.group(3), m.group(1) != ' ',
-                      re.findall(r'T\d+', nd.group(1)) if nd else []])
+                      re.findall(r'T\d+', nd.group(1)) if nd else [], m.group(4) or ''])
         continue
     m = re.match(r'\s*- \[([ xX])\] (\S+):', l)
     if m:
-        tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', []])
+        tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', [], ''])
 if team:
     # A sibling run dir <date>-<slug> with slug starting "<team>-" is another team whose
     # owners (<slug>-role) would otherwise pass the prefix test; live records still count.
@@ -492,9 +497,84 @@ for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
         prs |= set(re.findall(r'https://[^\s)>\]]+/pull/\d+', open(rp, encoding='utf-8', errors='replace').read()))
     except OSError:
         pass
-print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
+if mode != 'json':
+    print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
+    sys.exit(0)
+
+# ---- json: the status --json contract (version 1). Keys are only ever added. ----
+reg = sys.argv[4]
+rows = {}   # title -> registry fields; last row wins, the dash monitor is not a teammate
+try:
+    for l in open(reg, encoding='utf-8', errors='replace'):
+        c = l.rstrip('\n').split(' ', 10)
+        if len(c) < 4 or c[2] == 'dash':
+            continue
+        c += ['-'] * (11 - len(c))
+        rows[c[3]] = dict(backend=c[0], ref=c[1], layout=c[2], model=c[4], submodel=c[5],
+                          session_id=c[9], cwd=c[10])
+except OSError:
+    pass
+def dash(v):
+    return None if v in ('', '-') else v
+def mtime(p):
+    try: return int(os.stat(p).st_mtime)
+    except OSError: return None
+def branch(cwd):
+    # Cheap: read HEAD through the worktree's .git file; no git process per tick.
+    try:
+        g = os.path.join(cwd, '.git')
+        if os.path.isfile(g):
+            g = open(g, encoding='utf-8').read().split('gitdir:', 1)[1].strip()
+            g = g if os.path.isabs(g) else os.path.join(cwd, g)
+        head = open(os.path.join(g, 'HEAD'), encoding='utf-8').read().strip()
+        return head[len('ref: refs/heads/'):] if head.startswith('ref: refs/heads/') else None
+    except (OSError, IndexError):
+        return None
+def task_of(title, r):
+    mine = [t for t in tasks if not t[2] and t[1] in (title, 'any')]
+    m = re.match(r'\s*(T\d+):', r['step'])
+    pick = [t for t in mine if m and t[0] == m.group(1)] or [t for t in mine if t[1] == title]
+    return pick[0][0] if pick else (m.group(1) if m else None)
+mates = []
+for title, r in recs.items():
+    g = rows.get(title, {})
+    cwd = dash(g.get('cwd', '-'))
+    rp = os.path.join(run, 'reports', r['role'] + '.md') if run != '-' else ''
+    sp = os.path.join(run, 'status', r['role'] + '.txt') if run != '-' else ''
+    mates.append(dict(
+        role=r['role'], title=title, state=r['state'], milestone=r['ms'],
+        step=None if r['step'] == '-' else r['step'], pct=None if r['pct'] < 0 else r['pct'],
+        age_min=None if r['age'] < 0 else r['age'],
+        elapsed_min=None if r['elapsed'] < 0 else r['elapsed'],
+        note=r['note'] or None, task=task_of(title, r),
+        backend=dash(g.get('backend', '-')), ref=dash(g.get('ref', '-')),
+        layout=dash(g.get('layout', '-')), model=dash(g.get('model', '-')),
+        submodel=dash(g.get('submodel', '-')), session_id=dash(g.get('session_id', '-')),
+        cwd=cwd, branch=branch(cwd) if cwd and '/.team/worktrees/' in cwd else None,
+        report=rp if rp and os.path.isfile(rp) else None, report_mtime=mtime(rp) if rp else None,
+        status_mtime=mtime(sp) if sp else None))
+def split_rest(rest):
+    parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
+    out = dict(scope=parts[0].strip() or None, owns=None)
+    for k, v in zip(parts[1::2], parts[2::2]):
+        if k == 'owns':
+            out['owns'] = v.strip() or None
+    return out
+tlist = []
+for t in tasks:
+    sr = split_rest(t[4])
+    tlist.append(dict(id=t[0], owner=t[1], done=t[2], needs=t[3],
+                      ready=(not t[2]) and all(d in done_ids for d in t[3]), **sr))
+print(json.dumps(dict(
+    version=1, team=team, run=None if run == '-' else run, now=int(time.time()),
+    summary=dict(done=done, total=total, pct=pct, est=bool(est), elapsed_min=elapsed,
+                 eta_min=eta, pending=len(pending), unassigned=unassigned, prs=len(prs),
+                 ready_owners=ready_owners),
+    prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
+# _st_json <run-dir> <registry> <team>: teammate records on stdin -> the status --json document
+_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" json "$2"; }
 
 # ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
@@ -821,17 +901,24 @@ _st_frame() {
   python3 -I -c "$_ST_FRAME_PY" "$@"
 }
 
-# _st_collect <team>: resolve run dir + lead pane, print the team's records.
-# Exit 3 when the team has no registry.
+# _st_run_of <team>: the run dir the team's records read. Registry col 7 (the run dir spawn
+# recorded; last row = newest when a slug is reused) wins over the newest .team/runs/*-<team>.
+_st_run_of() {
+  local team=$1 reg run rd
+  reg=$(_reg "$team")
+  run=$(ls -dt "$(_root)/.team/runs/"*"-$team" 2>/dev/null | head -1 || true)
+  rd=$(awk 'NF>=7 && $7!="-" {r=$7} END{print r}' "$reg" 2>/dev/null || true)
+  [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
+  printf '%s\n' "$run"
+}
+
+# _st_collect <team> [--records]: resolve run dir + lead pane, print the team's records and
+# the @summary record (--records: the teammate records only). Exit 3 when the team has no registry.
 _st_collect() {
-  local team=$1
+  local team=$1 only=${2:-}
   local reg; reg=$(_reg "$team")
   [ -f "$reg" ] || return 3
-  local root; root=$(_root)
-
-  # Fallback run dir (for old registry rows without col 7)
-  local run
-  run=$(ls -dt "$root/.team/runs/"*"-$team" 2>/dev/null | head -1 || true)
+  local run; run=$(_st_run_of "$team")
 
   # Lead's pane_ref, for the "in the lead's pane" note. Inside the monitor pane
   # _lead_pane would resolve to the monitor itself, so sub_monitor bakes
@@ -845,30 +932,70 @@ _st_collect() {
       leadpane="${lp%% *}"
     fi
   fi
-  # Registry col 7 (the run dir spawn recorded) wins over the newest-run fallback.
-  # Last row: spawn appends, so it is the newest run when a team slug is reused.
-  local rd; rd=$(awk 'NF>=7 && $7!="-" {r=$7} END{print r}' "$reg" 2>/dev/null || true)
-  [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
   local recs; recs=$(_st_records "$reg" "$run" "$leadpane" "$team")
   [ -z "$recs" ] || printf '%s\n' "$recs"
+  [ "$only" = --records ] && return 0
   printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null || true
 }
 
+# _st_tui_pick: sets _ST_TUI to the command that runs the full-screen TUI monitor
+# (scripts/monitor_tui.py, Textual) and returns 0; returns 1 for the classic monitor.
+# TEAM_MONITOR_UI=classic forces the classic one. Textual already importable by python3
+# wins; else `uv run --script` resolves the script's inline dependency on first use.
+_ST_TUI=()
+_st_tui_pick() {
+  _ST_TUI=()
+  local py="$here/monitor_tui.py"
+  [ "${TEAM_MONITOR_UI:-auto}" != classic ] && [ -f "$py" ] || return 1
+  if python3 -c 'import sys, textual; sys.exit(int(textual.__version__.split(".")[0]) < 1)' 2>/dev/null; then
+    _ST_TUI=(python3 "$py")
+  elif command -v uv >/dev/null 2>&1; then
+    _ST_TUI=(uv run --quiet --script "$py")
+  else
+    return 1
+  fi
+}
+
+# _st_close_self: close the pane this monitor runs in (tmux pane or cmux surface).
+_st_close_self() {
+  if [ "$(_mux)" = tmux ] && [ -n "${TMUX_PANE:-}" ]; then
+    _tmux kill-pane -t "$TMUX_PANE" >/dev/null 2>&1 || true
+  elif [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
+    cmux close-surface --force --surface "$CMUX_SURFACE_ID" >/dev/null 2>&1 || true
+  fi
+}
+
 # ---------------------------------------------------------------------------
-# sub_status [--watch] <team>
+# sub_status [--watch | --json [--sync]] <team>
 # One frame: summary + progress bar, a NEEDS YOU block only when something needs
 # attention, then the table. --watch re-reads the width every tick, repaints only
 # when the frame changed, syncs the sidebar from the same records, and exits 0
-# once `close` removes the registry.
+# once `close` removes the registry. In a terminal, --watch runs the TUI monitor
+# (monitor_tui.py) when Textual or uv is available, and falls back to this loop.
+# --json prints the same state as one JSON document (the TUI's only data source);
+# --sync also updates the sidebar from it, as one --watch tick does.
 # Exit: 0 ok, 3 no registry
 # ---------------------------------------------------------------------------
 
 sub_status() {
-  local watch=
-  [ "${1:-}" = --watch ] && { watch=1; shift; }
+  local watch= json= sync=
+  while :; do case ${1:-} in
+    --watch) watch=1; shift ;; --json) json=1; shift ;; --sync) sync=1; shift ;;
+    *) break ;;
+  esac; done
   local team=${1:?team}
   local reg; reg=$(_reg "$team")
   [ -f "$reg" ] || { printf 'no teammates recorded for %s\n' "$team" >&2; return 3; }
+
+  if [ -n "$json" ]; then
+    local run recs; run=$(_st_run_of "$team")
+    recs=$(_st_collect "$team" --records) || return 3
+    if [ -n "$sync" ]; then
+      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" 2>/dev/null)" || true
+    fi
+    printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team"
+    return 0
+  fi
 
   local color=0 ascii=0
   _st_color_on && color=1
@@ -887,6 +1014,20 @@ sub_status() {
   # immediately, which would spin the loop instead of waiting.
   local keys=0
   [ -t 0 ] && keys=1
+
+  # The TUI monitor, when this is a real terminal and Textual/uv can run it. Its exit
+  # code says why it stopped: 0 the user quit, 4 every teammate finished (close this pane,
+  # as the classic loop does), 5 the team was closed. Anything else (no network for uv's
+  # first install, a crash) falls through to the classic loop below.
+  if [ "$keys" = 1 ] && [ -t 1 ] && _st_tui_pick; then
+    local trc=0
+    TEAM_SCRIPT="$here/team.sh" "${_ST_TUI[@]}" --team "$team" --team-sh "$here/team.sh" || trc=$?
+    case $trc in
+      0|5) return 0 ;;
+      4) _st_close_self; return 0 ;;
+      *) printf 'monitor: the TUI stopped (exit %s); using the classic monitor\n' "$trc" >&2; sleep 2 ;;
+    esac
+  fi
   local km= mouse=0
   if [ "$keys" = 1 ]; then
     km=$(mktemp "${TMPDIR:-/tmp}/team-keymap.XXXXXX") || km=
@@ -937,11 +1078,7 @@ sub_status() {
       printf '\n  all teammates finished — closing this pane.\n'
       printf '  (reopen with: team.sh monitor %s · keep it with TEAM_MONITOR_AUTOCLOSE=0)\n' "$team"
       sleep "${TEAM_MONITOR_CLOSE_GRACE:-4}"
-      if [ "$(_mux)" = tmux ] && [ -n "${TMUX_PANE:-}" ]; then
-        _tmux kill-pane -t "$TMUX_PANE" >/dev/null 2>&1 || true
-      elif [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
-        cmux close-surface --force --surface "$CMUX_SURFACE_ID" >/dev/null 2>&1 || true
-      fi
+      _st_close_self
       return 0
     fi
     [ -n "$allfin" ] && was_all_fin=1 || { was_all_fin=; _ST_SAW_UNFINISHED=1; }
