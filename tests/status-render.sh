@@ -280,6 +280,11 @@ got=$(summary_team tm2 "$(printf -- '- [ ] T1 tm2-a: x\n')" \
 [ "$(cut -f11 <<<"$got")" = tm2-b ] && pass "M17d: a task claimed by another teammate is no longer the line owner's" \
   || fail "M17d: line owner still listed" "got=[$got]"
 
+# M17e: a reused teammate (own lines all ticked, ms=reported) still claims a ready any task
+got=$(summary_team tm2 "$(printf -- '- [x] T1 tm2-a: x\n- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tWORKING\treported\tT3: picking it up\t1\t-\t-\t3')")
+[ "$(cut -f9 <<<"$got")" = 0 ] && pass "M17e: a reported teammate's claim on a ready any task counts as assigned" \
+  || fail "M17e: reported claimant ignored" "got=[$got]"
+
 # M18: team tm does not take team tm-x's lines (a sibling run dir names tm-x)
 d=$(mktemp -d "$W/pre.XXXX"); mkdir -p "$d/2026-11-18-tm/reports" "$d/2026-11-18-tm-x"
 printf -- '- [ ] T1 tm-a: x\n- [ ] T2 tm-x-a: y\n' > "$d/2026-11-18-tm/tasks.md"
