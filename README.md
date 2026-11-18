@@ -56,7 +56,7 @@ When the task edits code in a git repo, each teammate also gets its own worktree
 
 ## The monitor
 
-A status pane opens while the team runs. It shows overall task progress, a team ETA, and any teammate that is idle while ready work has no owner, pinned under **NEEDS YOU**. Teammates report their own percentages, so treat the progress and ETA as rough estimates.
+A status pane opens while the team runs. It shows overall task progress, a team ETA, and a **NEEDS YOU** block that pins any teammate needing attention, such as a dead session or one idle while ready work has no owner. `/team --help` lists every state. Teammates report their own percentages, so treat the progress and ETA as rough estimates.
 
 ## Project memory
 
