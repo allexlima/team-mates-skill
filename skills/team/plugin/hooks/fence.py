@@ -17,7 +17,8 @@ import os
 import shlex
 import sys
 
-WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo"}
+WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo",
+            "if", "then", "elif", "else", "while", "until", "do", "!", "{"}  # reserved words too
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
 WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after",
@@ -107,16 +108,18 @@ def git_problem(argv):
         return None
     sub = argv[i]
     if sub == "config":
-        args, k, pos = argv[i + 1:], 0, []
+        args, k, pos, safe = argv[i + 1:], 0, [], False
         while k < len(args):
             a = args[k]
             if a in CONFIG_VALUE_OPTS:
                 k += 1
-            elif not (a.startswith("-") or a in CONFIG_SUBCMDS):
+            elif not pos and a in CONFIG_SAFE:  # a read/unset counts only before the key
+                safe = True
+            elif not (a.startswith("-") or (not pos and a in CONFIG_SUBCMDS)):
                 pos.append(a)
             k += 1
         names = pos[:2] if {"rename-section", "--rename-section"} & set(args) else pos[:1]
-        if any(map(hookspath, names)) and not CONFIG_SAFE & set(args):
+        if any(map(hookspath, names)) and not safe:
             return HOOKS
     for a in argv[i + 1:]:
         if a == "--":
