@@ -21,6 +21,21 @@ Open items. Each one names where the work lives.
 - [ ] Decide whether "idle with work pending" should also fire when an idle teammate has a ready
       task of its own (today it fires only for unassigned tasks).
 
+## TUI monitor
+
+Reported by tm2-tui (branch `feat/tui-monitor`); not re-measured here.
+
+- [ ] Mouse clicks in the TUI monitor under cmux are unverified. cmux `send-key`/`send` cannot
+      synthesize clicks, so a person has to click a card in a real cmux pane: a click should focus,
+      a double-click should open details, and cmux should not take the click first.
+- [ ] Poll cost: `team.sh status --json --sync` with 7 live teammates under real cmux took
+      4.7-6.7s before and 2.1-2.8s after the fork cuts (03933ef). That is fine at the default 5s
+      interval; the 1.5s target is deferred. What is left is three python starts (list-panes,
+      list-notifications, summary) plus one cmux `identify` per teammate. Next step: one python
+      process doing identify, notifications and summary.
+- [ ] The TUI's "Σ tok" sums input plus cache-read tokens per message, so cache re-reads dominate
+      (118M for a 45-minute run). Relabel it or show output tokens only.
+
 ## Permissions
 
 - [ ] `_team_allow` (`skills/team/scripts/team.sh`) approves Edit and Write on any path. Scope them to the
