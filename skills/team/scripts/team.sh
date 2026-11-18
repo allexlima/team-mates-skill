@@ -7,6 +7,7 @@
 #                         is recorded or its dir is gone (then spawn without --resume)
 #   team.sh close <team>  -> force-closes every recorded pane/tab (incl. the monitor) whose live title still matches
 #                            its row (a reused ref is skipped, row dropped) and drops finished rows (the team is over);
+#                            each dropped row's scratch dir and system prompt in the registry dir go with it;
 #                            exit 1 (rows kept for a retry) if one could not be closed
 #   team.sh init <team>   -> creates .team/ (idempotent) + a run dir; prints the run dir path
 #   team.sh lead-title    -> renames the lead's cmux workspace and tab to "Main Board - <project>"
@@ -21,7 +22,7 @@
 #                            exit 1 if one could not be closed
 #   team.sh gate-init     -> sets up the no-mistakes gate for this repo (needs an "origin" remote)
 #   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept),
-#                            and its scratch dirs and system prompts in the registry dir (a live teammate's kept)
+#                            and its finished teammates' scratch dirs and system prompts in the registry dir
 #   team.sh finish <team> <role> -> after the lead received a teammate's report: mark its row finished (session id
 #                                  and cwd kept), then close its pane. exit 2 refused, nothing changed: the report did
 #                                  not grow since spawn or gained no new PARALLELISM: line, tasks.md lacks
@@ -373,6 +374,15 @@ _reg_add() {
 # 0 when a registry row (whole line) carries the terminal marker: its teammate was finished on purpose
 # (`team.sh finish`), its pane is gone by design, and the row holds the session id to resume from.
 _finished() { [ "$(awk '{print $9}' <<<"$1")" = finished ]; }
+# Remove one teammate's scratch dir and system prompt from the registry dir, by exact title
+# (team slugs prefix each other, so never by glob). A symlink planted there is left alone.
+_rm_mate_files() {
+  local f
+  for f in "$(_reg_dir)/team-$1.scratch" "$(_reg_dir)/team-$1.sysprompt.md"; do
+    [ -e "$f" ] && [ ! -L "$f" ] || continue
+    rm -rf -- "$f" && echo "removed $f"
+  done
+}
 # A report's last mandatory section header (plain, bold or heading markdown); `finish` counts these.
 # No `>`: a blockquoted PARALLELISM: is a peer's report being quoted, not this teammate's trailer.
 _trailer='^[#*_ -]*PARALLELISM:'
@@ -621,16 +631,14 @@ if [ "$sub" = clean ]; then
     if git -C "$root" worktree remove "$wt" 2>/dev/null; then echo "removed $wt"
     else echo "kept $wt (uncommitted changes)"; fi
   done
-  # Per-teammate scratch dirs and system prompts in the registry dir go too, except a live teammate's.
-  # Every registry is checked: team slugs can prefix each other (foo, foo-bar).
-  for s in "$(_reg_dir)/team-$team-"*.scratch "$(_reg_dir)/team-$team-"*.sysprompt.md; do
-    [ -e "$s" ] && [ ! -L "$s" ] || continue
-    t=${s##*/team-}; t=${t%.scratch}; t=${t%.sysprompt.md}
-    if cat "$(_reg_dir)"/team-*.tabs 2>/dev/null | awk -v t="$t" '$4==t && $9!="finished"{f=1} END{exit !f}'; then
-      echo "kept $s ($t is live)"; continue
-    fi
-    rm -rf -- "$s" && echo "removed $s"
-  done
+  # Finished teammates' scratch dirs and system prompts go too, by the titles in this team's own
+  # registry (`close` already removed the files of the rows it dropped); a live teammate's are kept.
+  reg=$(_reg "$team")
+  [ -f "$reg" ] && while IFS= read -r row; do
+    read -r _ _ _ title _ <<<"$row" || true
+    [ -n "${title:-}" ] || continue
+    if _finished "$row"; then _rm_mate_files "$title"; else echo "kept $title's scratch and system prompt (live)"; fi
+  done < "$reg"
   exit 0
 fi
 
@@ -651,12 +659,12 @@ if [ "$sub" = close ]; then
     read -r backend id _ title _ _ rd _ <<<"$row" || true
     [ -n "${id:-}" ] || continue
     rm -f "$(_reg_dir)/team-$team-${title#"$team"-}.round"
-    if _finished "$row"; then echo "dropped finished $title (no pane)"; continue; fi
+    if _finished "$row"; then echo "dropped finished $title (no pane)"; _rm_mate_files "$title"; continue; fi
     case $backend in cmux|tmux) ;; *) echo "dropped $backend $id ($title): unknown backend; close it by hand"; continue ;; esac
     cur=$(awk -F'\t' -v x="$id" '$1==x {print $2; exit}' <<<"$titles")
-    if [ -z "$cur" ]; then echo "closed $backend $id (already gone)"; continue; fi
-    if [ "$cur" != "$title" ]; then echo "skipped $backend $id: now titled '$cur', not '$title' (ref reused); row dropped"; continue; fi
-    if err=$(_mux_close "$backend" "$id"); then echo "closed $backend $id"
+    if [ -z "$cur" ]; then echo "closed $backend $id (already gone)"; _rm_mate_files "$title"; continue; fi
+    if [ "$cur" != "$title" ]; then echo "skipped $backend $id: now titled '$cur', not '$title' (ref reused); row dropped"; _rm_mate_files "$title"; continue; fi
+    if err=$(_mux_close "$backend" "$id"); then echo "closed $backend $id"; _rm_mate_files "$title"
     else echo "could not close $backend $id: $err" >&2; keep+="$row"$'\n'; fi
   done < "$reg"
   # Clear the lead sidebar pill/progress for this team (lib/status.sh); best-effort.

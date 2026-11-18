@@ -1295,6 +1295,28 @@ _disallow_of() {
   [ -f "$W/cl-victim/keep" ] && pass "T28b: clean does not follow a symlinked scratch" \
     || fail "T28b: clean does not follow a symlinked scratch"
   rm -rf "$D/team-$T"*
+
+  # Team slugs prefix each other: clean and close of team foo never touch team foo-bar's files,
+  # registered or not; close removes its own finished teammates' files.
+  T="cp$$"; mkdir -p "$D/team-$T-bar-x.scratch" "$D/team-$T-bar-y.scratch" "$D/team-$T-a.scratch"
+  touch "$D/team-$T-bar-x.scratch/keep" "$D/team-$T-bar-x.sysprompt.md" "$D/team-$T-bar-y.sysprompt.md" "$D/team-$T-a.sysprompt.md"
+  printf 'cmux surface:7 pane %s - - - %s finished - %s\n' "$T-bar-y" "$R" "$R" > "$D/team-$T-bar.tabs"
+  printf 'cmux surface:6 pane %s - - - %s finished - %s\n' "$T-a" "$R" "$R" > "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ -f "$D/team-$T-bar-x.scratch/keep" ] && [ -f "$D/team-$T-bar-x.sysprompt.md" ] \
+    && [ -d "$D/team-$T-bar-y.scratch" ] && [ -f "$D/team-$T-bar-y.sysprompt.md" ] \
+    && pass "T28b: clean leaves a prefixed team's files" \
+    || fail "T28b: clean leaves a prefixed team's files" "$(ls "$D" | grep "$T")"
+  [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] \
+    && pass "T28b: clean removes its own finished teammate's files" \
+    || fail "T28b: clean removes its own finished teammate's files"
+  mkdir -p "$D/team-$T-a.scratch"; touch "$D/team-$T-a.sysprompt.md"
+  printf 'cmux surface:6 pane %s - - - %s finished - %s\n' "$T-a" "$R" "$R" > "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" close "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] && [ -f "$D/team-$T-bar-x.scratch/keep" ] \
+    && pass "T28b: close removes the files of the rows it drops, only those" \
+    || fail "T28b: close removes the files of the rows it drops, only those" "$(ls "$D" | grep "$T")"
+  rm -rf "$D/team-$T"*
 }
 
 # ══════════════════════════════════════════════════════════════════
