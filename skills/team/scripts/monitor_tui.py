@@ -905,8 +905,11 @@ if HAVE_TEXTUAL:
                                   (time.strftime("%H:%M", time.localtime(now + eta)), "bold"))
         label = Text(f"  {'~' if est else ''}{pct}%  ", style="bold")
         barw = max(8, width - label.cell_len - eta_t.cell_len - 1)
-        line2 = Text.assemble(gbar(pct, barw), label, eta_t)
         mates = doc.get("teammates", [])
+        # Nothing working (all idle, stalled, waiting or finished): the bar stops looking alive.
+        busy = any(m["state"] == "WORKING" for m in mates)
+        bar = gbar(pct, barw) if busy else gbar(pct, barw, c0=PAL["dim"], c1=PAL["dim"])
+        line2 = Text.assemble(bar, label, eta_t)
         n = lambda states: sum(1 for m in mates if m["state"] in states)
         alerts = len(alerts_of(view))
         tok = sum((v or {}).get("tokens") or 0 for v in (view.tx or {}).values())
@@ -1383,8 +1386,9 @@ if HAVE_TEXTUAL:
                              Text(t.get("scope") or "", style=PAL["dim"] if t["done"] else PAL["text"])))
             rows.sort(key=lambda r: (r[0], r[1]))
             # Fit Scope to what is left of the panel, so the table never scrolls sideways.
-            ownw = max([r[5].cell_len for r in rows] + [5])
-            room = max(12, (bl.size.width or 100) - (2 + 5 + ownw + 15 + 7) - 14)
+            heads = ("", "Task", "Owner", "Progress", "ETA")
+            fixed = sum(max([r[3 + i].cell_len for r in rows] + [len(heads[i])]) + 2 for i in range(5))
+            room = max(12, (bl.size.width or 100) - fixed - 2 - 2 - 2)   # border, scrollbar, scope padding
             for r in rows:
                 r[8].truncate(room, overflow="ellipsis")
             cur = bl.cursor_row

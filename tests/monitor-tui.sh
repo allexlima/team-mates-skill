@@ -5,6 +5,7 @@
 #   J*  status --json: the one document the TUI reads (joined registry fields, parsed tasks)
 #   U*  the summary's `unassigned` count, shared by the classic monitor and the TUI
 #   P*  monitor_tui.py: its stdlib layer (--selftest), and a Textual render when Textual is installed
+#   X*  all teammates finished: the TUI's exit 4 closes the pane (stub TUI, real pty)
 #   W*  status --watch picks the classic monitor when TEAM_MONITOR_UI=classic
 # USAGE:  bash tests/monitor-tui.sh
 set -uo pipefail
@@ -118,6 +119,28 @@ if python3 -c 'import textual' 2>/dev/null; then
   ls "$RUN/monitor/history.jsonl" >/dev/null 2>&1 && pass "P3: the TUI keeps its history in <run>/monitor/history.jsonl" || fail "P3: history file" "none"
 else
   echo "SKIP  P2/P3: Textual is not installed (pip install textual)"
+fi
+
+# ═══ X1 — all teammates finished: the TUI exits 4, the status pane closes its own surface ═══
+# A stub monitor_tui.py that exits 4 (what the real one does after the grace period) in a copy of the
+# skill, a stub uv that runs it, a real pty (the TUI is picked for terminals only), and the stub cmux
+# logging close-surface. An exit of 0 or 5 must close nothing.
+SK="$W/skill"; cp -R "$(dirname "$TEAM_SH")/.." "$SK" 2>/dev/null
+mkdir -p "$W/xbin"
+printf '#!/usr/bin/env bash\nshift; shift; shift; exec python3 "$@"\n' > "$W/xbin/uv"; chmod +x "$W/xbin/uv"
+sed 's|^  \*) true ;;|  close-surface) echo "$*" >> "$CMUX_LOG" ;;\n  *) true ;;|' "$W/bin/cmux" > "$W/xbin/cmux"; chmod +x "$W/xbin/cmux"
+x1() {   # x1 <exit code of the stub TUI> -> prints what cmux saw
+  printf 'import sys\nsys.exit(%s)\n' "$1" > "$SK/scripts/monitor_tui.py"; : > "$W/cmux.log"
+  (cd "$G" && CMUX_LOG="$W/cmux.log" PATH="$W/xbin:$PATH" TEAM_MONITOR_UI=auto timeout 30 python3 -c '
+import pty, sys
+sys.exit(pty.spawn(["bash", sys.argv[1], "status", "--watch", "j1"]) >> 8)' "$SK/scripts/team.sh" >/dev/null 2>&1)
+  cat "$W/cmux.log"
+}
+if [ -d "$SK/scripts" ]; then
+  out4=$(x1 4); out0=$(x1 0)
+  [ "$out4" = "close-surface --force --surface surface:lead" ] && [ -z "$out0" ] \
+    && pass "X1: exit 4 (all finished) closes the monitor's own surface; exit 0 closes nothing" \
+    || fail "X1: exit-4 auto-close" "exit4=[$out4] exit0=[$out0]"
 fi
 
 # ═══ W1 — TEAM_MONITOR_UI=classic keeps the classic monitor ═══
