@@ -1036,6 +1036,21 @@ python3 -c 'import os,sys; os.replace(sys.argv[1], sys.argv[2])' "$sptmp" "$sysp
   || { rm -f "$sptmp"; echo "team.sh: refused: cannot replace $sysprompt (is it another user's file?)" >&2; exit 2; }
 envs="CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4 TEAM_MEMBER=$(printf %q "$title")"
 [ "$submodel" != - ] && envs+=" CLAUDE_CODE_SUBAGENT_MODEL=$(printf %q "$submodel")"
+# Session-only hook plugin (../plugin): an event log for `status` and a PreToolUse fence. It goes in
+# with --plugin-dir, never --settings: cmux already passes --settings and a second one replaces it
+# (last wins), dropping cmux's own hooks. Needs a run dir for the event log; skipped without one.
+plugin="$here/../plugin" plugarg=
+if [ "$rundir" != - ] && [ -f "$plugin/hooks/hooks.json" ]; then
+  ev="$rundir/events" scratch="$(_reg_dir)/team-$team-$role.scratch"
+  for d in "$ev" "$scratch"; do
+    { [ ! -L "$d" ] && (umask 077; mkdir -p "$d") && [ -O "$d" ]; } \
+      || { echo "team.sh: refused: $d is a symlink or not yours" >&2; exit 2; }
+  done
+  chmod 700 "$scratch"
+  envs+=" TEAM_EVENTS_FILE=$(printf %q "$ev/$role.jsonl") TEAM_SCRATCH=$(printf %q "$scratch")"
+  envs+=" TEAM_FENCE_ROOTS=$(printf %q "$dir:$rundir:$scratch")"
+  plugarg=" --plugin-dir=$(printf %q "$(cd "$plugin" && pwd)")"
+fi
 # Our own session id, recorded in the registry, so a later round can `claude --resume` it. A resumed
 # session keeps its id (live-probed). Permission mode and allowlist are passed again on resume; the
 # system prompt is not: claude replays the one recorded at the session's first request and ignores a
@@ -1049,6 +1064,7 @@ else
 fi
 # One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
 [ -n "$allow" ] && cmd+=" --allowedTools $(printf %q "$allow")"
+cmd+=$plugarg
 if [ -z "$resume" ] && [ -s "$sysprompt" ]; then cmd+=" --append-system-prompt-file $(printf %q "$sysprompt")"; fi
 [ -n "$model" ] && cmd+=" --model $(printf %q "$model")"
 cmd+=" \"\$(cat $(printf %q "$pfile"))\""

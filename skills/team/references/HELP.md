@@ -133,7 +133,7 @@ a one-time pointer note is added to CLAUDE.local.md — never to CLAUDE.md):
     .team/facts.md             Consensus findings with evidence + date + run id;
                                every teammate reads it first and flags stale entries
     .team/roles/<role>.md      Roles saved in this project (override shared roles)
-    .team/runs/<date>-<team>/  tasks.md · prompts/ · reports/ · status/ · synthesis.md
+    .team/runs/<date>-<team>/  tasks.md · prompts/ · reports/ · status/ · events/ · synthesis.md
     .team/worktrees/           build-run worktrees (removed on shutdown if clean)
 Only conclusions and pointers are stored — never secrets, PII, or raw data.
 
@@ -288,6 +288,22 @@ side's best evidence) · Dropped (refuted) · Next steps.
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
   haiku tier; they are refused on build runs.
+- A teammate with a run dir also loads the skill's `plugin/` folder for that session only
+  (`--plugin-dir`; nothing is written to your settings, and your own hooks and cmux's still
+  run).
+  - Event log: one line per hook event (time, event, tool name, notification type) in
+    `.team/runs/<run>/events/<role>.jsonl`. Tool input, prompts and messages are never recorded.
+  - PreToolUse fence, enforced even in auto mode. It blocks Edit/Write/MultiEdit/
+    NotebookEdit outside the teammate's worktree, run dir and private scratch dir
+    (`$TEAM_SCRATCH`), so `/tmp` and `~/.claude` (memory, plans) are off limits; and git
+    commands that skip hooks (`--no-verify`, `commit -n`, core.hooksPath, aliases or
+    include files set with `-c`, `--config-env` or `git config`, and the `GIT_CONFIG*`
+    variables), also after `-C <dir>`, `sudo`, `env` or inside `sh -c`.
+  The fence does not make Bash safe. Every other Bash write is unfenced, and so are git
+  commands built by `eval`, backticks, `$(...)`, `xargs`, `env -S` strings or a changed
+  `HOME`. If the plugin's hooks never run (for example under a managed
+  `allowManagedHooksOnly` policy), there is no event log and no fence. The plugin is named
+  `team-mates-events`; an installed plugin of that name is replaced for the session.
 - The hard cap is 8 teammates (spawn refuses beyond it).
 - Cost: every teammate is a full Claude session with its own context window,
   so cost scales with team size. Prefer 2–3 sharp roles; the lead already fits a model

@@ -1153,6 +1153,45 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
 }
 
 # ══════════════════════════════════════════════════════════════════
+# T28b — spawn loads the event/fence plugin with --plugin-dir (never a second
+# --settings, which would replace cmux's hooks) and sets its env in the launcher.
+# ══════════════════════════════════════════════════════════════════
+{
+  R="$W/t28b"; _mkgit "$R"; run="$R/.team/runs/r1"; mkdir -p "$run/prompts"
+  pf="$run/prompts/worker.md"; printf 'prompt\n' > "$pf"
+  TM="t28b$$"; plug="$(cd "$(dirname "$TEAM_SH")/../plugin" && pwd)"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" worker "$pf" sonnet) >/dev/null 2>&1 || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  line=$(grep -- '--plugin-dir=' "$CMUX_LOG" || true)
+  scr="$TEAM_REG_DIR/team-$TM-worker.scratch"
+  case $line in *"--plugin-dir=$plug "*) pass "T28b: --plugin-dir=<skill>/plugin in cmd" ;;
+    *) fail "T28b: --plugin-dir=<skill>/plugin in cmd" "${line:-(no --plugin-dir)}" ;; esac
+  case $line in *--settings*) fail "T28b: spawn adds no --settings" "$line" ;; *) pass "T28b: spawn adds no --settings" ;; esac
+  case $line in *"TEAM_EVENTS_FILE=$run/events/worker.jsonl "*) pass "T28b: TEAM_EVENTS_FILE in the run dir" ;;
+    *) fail "T28b: TEAM_EVENTS_FILE in the run dir" "$line" ;; esac
+  case $line in *"TEAM_FENCE_ROOTS=$R:$run:$scr "*) pass "T28b: fence roots = dir:run:scratch" ;;
+    *) fail "T28b: fence roots = dir:run:scratch" "$line" ;; esac
+  case "$(ls -ld "$run/events") $(ls -ld "$scr")" in drwx------*" "drwx------*) pass "T28b: events and scratch dirs are 0700" ;;
+    *) fail "T28b: events and scratch dirs are 0700" "$(ls -ld "$run/events" "$scr" 2>&1)" ;; esac
+
+  # A symlinked events dir is refused before any pane opens.
+  R2="$W/t28b2"; _mkgit "$R2"; run2="$R2/.team/runs/r1"; mkdir -p "$run2/prompts" "$W/t28b-elsewhere"
+  ln -s "$W/t28b-elsewhere" "$run2/events"; printf 'prompt\n' > "$run2/prompts/worker.md"
+  _reset_logs; rc=0
+  (cd "$R2" && bash "$TEAM_SH" spawn "t28c$$" worker "$run2/prompts/worker.md" sonnet) >/dev/null 2>&1 || rc=$?
+  rm -f "$TEAM_REG_DIR/team-t28c$$.tabs"
+  [ "$rc" = 2 ] && ! grep -q new-split "$CMUX_LOG" && pass "T28b: symlinked events dir refused (exit 2, no pane)" \
+    || fail "T28b: symlinked events dir refused (exit 2, no pane)" "rc=$rc"
+
+  # No run dir: no event log to write, so no plugin.
+  pf3="$R/p.md"; printf 'prompt\n' > "$pf3"; _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "t28d$$" worker "$pf3" sonnet) >/dev/null 2>&1 || true
+  rm -f "$TEAM_REG_DIR/team-t28d$$.tabs"
+  grep -q -- '--plugin-dir' "$CMUX_LOG" && fail "T28b: no run dir, no plugin" || pass "T28b: no run dir, no plugin"
+}
+
+# ══════════════════════════════════════════════════════════════════
 # Summary
 # ══════════════════════════════════════════════════════════════════
 echo ""
