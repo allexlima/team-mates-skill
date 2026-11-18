@@ -867,6 +867,7 @@ try:
     from textual import on, work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
+    from textual.css.query import NoMatches
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen, Screen
     from textual.widget import Widget
@@ -1134,6 +1135,12 @@ if HAVE_TEXTUAL:
             return next((m for m in view.doc.get("teammates", []) if m["title"] == self.mate_title), None)
 
         def refresh_view(self, view):
+            try:
+                self._refresh_view(view)
+            except NoMatches:   # tab panes mount after the screen; the next tick retries
+                pass
+
+        def _refresh_view(self, view):
             if not view:
                 return
             m = self._mate(view)
@@ -1296,11 +1303,17 @@ if HAVE_TEXTUAL:
                 except Exception as e:   # never let one bad tick kill the pane
                     self.call_from_thread(self._error, f"monitor: {type(e).__name__}: {e}")
                     return
-                self.call_from_thread(self._apply, view)
+                self.call_from_thread(self._guarded, self._apply, view)
             elif kind == "gone":
                 self.call_from_thread(self.exit, EXIT_TEAM_CLOSED)
             else:
-                self.call_from_thread(self._error, f"status --json failed: {payload}")
+                self.call_from_thread(self._guarded, self._error, f"status --json failed: {payload}")
+
+        def _guarded(self, fn, *args):
+            try:
+                fn(*args)
+            except NoMatches:   # a fetch that lands while the app tears down finds no widgets
+                pass
 
         def _error(self, msg):
             hdr = self.query_one("#hdr", HeaderPanel)
@@ -1337,7 +1350,7 @@ if HAVE_TEXTUAL:
         def _tick(self):
             self.tick += 1
             if self.view:
-                self._render_all(light=True)
+                self._guarded(self._render_all, True)
             if isinstance(self.screen, DetailScreen) and self.tick % 3 == 0:
                 self.screen.refresh_view(self.view)
 
@@ -1583,7 +1596,7 @@ def main(argv=None):
 
         async def walk():
             async with app.run_test(size=(140, 44)) as pilot:
-                for _ in range(30):
+                for _ in range(450):   # up to 90 s, the LiveSource.fetch timeout: a slow host takes many seconds
                     await pilot.pause(0.2)
                     if app.view:
                         break
@@ -1614,7 +1627,7 @@ def main(argv=None):
 
         async def shot():
             async with app.run_test(size=(cols, rows)) as pilot:
-                for _ in range(30):
+                for _ in range(450):   # up to 90 s, the LiveSource.fetch timeout: a slow host takes many seconds
                     await pilot.pause(0.2)
                     if app.view:
                         break
