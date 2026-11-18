@@ -441,9 +441,9 @@ try:
 except OSError:
     lines = []
 for n, l in enumerate(lines, 1):
-    m = re.match(r'\s*- \[([ xX])\] (T\d+) (\S+): (.*)', l)
+    m = re.match(r'\s*- \[([ xX])\] (T\d+) (\S+):(?:\s+(.*))?$', l)
     if m:
-        nd = re.search(r'needs:\s*(.*)$', m.group(4))
+        nd = re.search(r'needs:\s*(.*)$', m.group(4) or '')
         tasks.append([m.group(2), m.group(3), m.group(1) != ' ',
                       re.findall(r'T\d+', nd.group(1)) if nd else []])
         continue

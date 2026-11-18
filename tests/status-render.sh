@@ -225,6 +225,10 @@ got=$(summary_of "$(printf -- '- [ ] T1 m7-w: a\n- [ ] T2 m7-w: b\n')" "$r7")
 [ "$(cut -f2-5 <<<"$got")" = "$(printf '0\t2\t20\t1')" ] \
   && pass "M7: a status line without a T<n>: prefix credits its % to the teammate's first open task" \
   || fail "M7: unprefixed credit" "got=[$got]"
+got=$(summary_of "$(printf -- '- [x] T1 m13-a:\n- [ ] T2 m13-a:\n')" "$(printf 'a\tm13-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')")
+[ "$(cut -f2-3 <<<"$got")" = "$(printf '1\t2')" ] \
+  && pass "M13: a task line with no scope after the colon still counts, as finish counts it" \
+  || fail "M13: scopeless task line" "got=[$got]"
 r8=$(printf 'a\tm8-a\tWORKING\tinvestigating\tx\t1\t-\t-\t3')
 got=$(summary_of "$(printf -- '- [x] m8-a: a\n- [ ] m8-b: b\n- [ ] m8-c: c\n')" "$r8")
 [ "$(cut -f2-4 <<<"$got")" = "$(printf '1\t3\t33')" ] \
