@@ -20,7 +20,7 @@ tmo() {
   if command -v timeout >/dev/null 2>&1; then timeout "$@"
   elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"
   else perl -e 'my $s = shift; my $p = fork; if (!$p) { exec @ARGV or exit 127 }
-    $SIG{ALRM} = sub { kill 15, $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0; exit($? >> 8)' "$@"
+    $SIG{ALRM} = sub { kill 15, $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
   fi
 }
 pass() { echo "PASS  $1"; passes=$((passes+1)); }
