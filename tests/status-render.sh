@@ -138,7 +138,7 @@ for cols in 20 30 40 50 72; do
   if [ "$cols" -ge 40 ]; then
     # alert rows keep their state WORD (not just the glyph), every table row keeps its AGE
     grep -E 'r_abc' <<<"$f" | sed -n '1,2p' | grep -qiE 'waiting|dead' || bad+=" cols=$cols:alert-word-lost"
-    [ "$(grep -cE '^  . r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
+    [ "$(grep -cE '^  [^ ]+ r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
   fi
 done
 [ -z "$bad" ] && pass "G7: widths 20-72 with 18-char roles + CJK: no line wider than the terminal; alert rows keep the state word and table rows their AGE at >=40 cols (decision 63)" \
