@@ -279,7 +279,8 @@ side's best evidence) · Dropped (refuted) · Next steps.
   ListAgents; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
-  DevTools MCP tools. A rule approves every flag of its command, so commands with a
+  DevTools MCP tools (UI QA needs Google Chrome stable and the MCP enabled; see the
+  Chrome rule in `teammate-rules.md`). A rule approves every flag of its command, so commands with a
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
