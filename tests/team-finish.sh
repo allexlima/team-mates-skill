@@ -232,6 +232,14 @@ fixture f11c; out=$(tm bash "$TEAM_SH" spawn --resume "$T" ghost "$RUN/prompts/w
 printf 'p\n' > "$RUN/prompts/w.md"; out=$(tm bash "$TEAM_SH" spawn --resume "$T" ghost "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
 [ $rc = 3 ] && pass "F11c: --resume with no recorded row/session exits 3" || fail "F11c: resume w/o row" "rc=$rc out=$out"
 
+# T15: the session id is read from a registry file and goes into a shell command line, so only a UUID
+# is accepted. A crafted id (tm1-reviewer's reproduction) must open no pane and run nothing.
+fixture f11e; row surface:33 w finished 'x;touch${IFS}'"$W"'/PWNED;:' "$R"; printf 'p\n' > "$RUN/prompts/w.md"; : > "$CMUX_LOG"
+out=$(tm bash "$TEAM_SH" spawn --resume "$T" w "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
+{ [ $rc = 2 ] && grep -q 'not a UUID' <<<"$out" && ! grep -qE 'new-split|new-surface' "$CMUX_LOG" && [ ! -e "$W/PWNED" ]; } \
+  && pass "F11e: --resume refuses a session id that is not a UUID (exit 2, no pane, nothing run)" \
+  || fail "F11e: bad resume sid" "rc=$rc out=$out pwned=$([ -e "$W/PWNED" ] && echo yes || echo no) cmux=$(cat "$CMUX_LOG")"
+
 fixture f11d; row surface:32 w finished "$SID" "$W/does-not-exist"; printf 'p\n' > "$RUN/prompts/w.md"
 out=$(tm bash "$TEAM_SH" spawn --resume "$T" w "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
 { [ $rc = 3 ] && [ "$(col9 w)" = finished ]; } \

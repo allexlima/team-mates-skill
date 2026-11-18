@@ -934,6 +934,10 @@ if [ -n "$resume" ]; then
   src=$(awk -v t="$title" '$4==t && ($3=="pane" || $3=="tab") && NF>=11 && $10!="-" {r=$0} END{print r}' "$reg" 2>/dev/null || true)
   [ -n "$src" ] || { echo "--resume: no recorded session for $title (spawned before rev5, or never spawned); spawn it without --resume" >&2; exit 3; }
   read -r _ _ _ _ _ _ _ _ _ rsid rcwd <<<"$src"
+  # The row is read from a file in the registry dir and the id goes into a shell command line below, so
+  # only a UUID gets through (spawn records one, and claude keeps the id it was given).
+  [[ $rsid =~ ^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ ]] \
+    || { echo "--resume: $title's recorded session id is not a UUID; refusing to run it (fix or remove its registry row, or spawn it without --resume)" >&2; exit 2; }
   [ -d "$rcwd" ] || { echo "--resume: $title's session dir $rcwd is gone (worktree cleaned?); spawn it without --resume" >&2; exit 3; }
 fi
 # A live teammate with this title would be a second session SendMessage cannot tell apart.
@@ -1016,7 +1020,7 @@ envs="CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=
 # new --append-system-prompt-file, so new instructions for a resumed teammate go in the prompt file.
 if [ -n "$resume" ]; then
   sid=$rsid
-  cmd="cd $(printf %q "$dir") && $envs claude --resume $sid --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
+  cmd="cd $(printf %q "$dir") && $envs claude --resume $(printf %q "$sid") --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
 else
   sid=$(python3 -c 'import uuid; print(uuid.uuid4())')
   cmd="cd $(printf %q "$dir") && $envs claude --session-id $sid --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
