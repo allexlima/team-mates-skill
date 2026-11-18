@@ -28,8 +28,8 @@ quote it word-for-word — they never restate it in their own words.
 1. Edit the **owner** file above.
 2. Grep the repo for the old wording and update or delete the copies.
 3. Run `bash skills/team/scripts/team.sh doccheck` — it flags retired drift phrases
-   (`inherit the lead`, `stacked`, `3–5`, `team.sh park`, `cmux browser`, `cmux-only` and
-   `cmux is required`), confirms every subcommand is documented in the `team.sh` header,
+   (`inherit the lead`, `stacked`, `3–5`, `2–5`, `as much as possible`, `team.sh park`,
+   `cmux browser`, `cmux-only` and `cmux is required`), confirms every subcommand is documented in the `team.sh` header,
    and confirms every `--flag` in `SKILL.md`'s argument-hint is explained in `HELP.md`.
    Fix what it reports.
 

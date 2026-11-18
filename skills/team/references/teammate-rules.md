@@ -70,7 +70,7 @@ the slowest teammate sets the pace for the whole team.
 - **Writing tools.** Run prose a person will read (reports to the user, PR descriptions, docs)
   through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
   diagram with `diagram-design`. On a build run, commit and open PRs the way
-  `git-practices.md` (next to these rules) says.
+  `~/.claude/skills/team/references/git-practices.md` says.
 - **Send questions to the lead, not your own pane.** When you need the user's input, a
   decision, or sign-off on an approach, do NOT use AskUserQuestion or wait silently in your
   pane — the user is not watching it. SendMessage the lead a message whose first line is

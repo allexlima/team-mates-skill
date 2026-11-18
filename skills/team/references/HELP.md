@@ -40,8 +40,8 @@ assumption otherwise gets paid once per teammate.
 
 ## Choosing roles
 - List them in the task (`Roles: security: …, perf: …, skeptic: …`) — used as-is.
-  A bare name loads a saved role: this project's `.team/roles/<name>.md` first,
-  else your shared library `~/.claude/team/roles/<name>.md`.
+  A bare name loads a saved role: project `.team/roles/` first, then the shared
+  library `~/.claude/team/roles/`.
 - Or `--autoroles` — derived from the project (reusing saved roles first),
   shown with reasons, you confirm. Approved new roles are saved for reuse.
 - Otherwise the lead picks roles from the task text alone.
@@ -198,7 +198,7 @@ team. Needs cmux or tmux; skipped under --inline.
   no pane; ask the lead to resume it.
 - Teammate *tool-permission* prompts appear in *their* pane — approve them there.
   **Known limitation:** a prompt produces no notification, so the status pane cannot flag
-  it. The teammate shows `WORKING` for about 10 minutes, then `STALLED?`. If a teammate has
+  it. The teammate shows `working` for about 10 minutes, then `stalled?`. If a teammate has
   been quiet that long, ask the lead to `show` it (brings its pane to the front) before assuming a bug.
   (Haiku-tier teammates run in dontAsk mode and don't prompt; denied tools appear in
   their report.)
@@ -233,9 +233,9 @@ team. Needs cmux or tmux; skipped under --inline.
                  "idle with work pending" — hand it that task.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
-  State is read from the hooks cmux injects into each *live* teammate, not from its screen.
-  A finished teammate has no surface, so its state comes from its report on disk and the
-  registry.
+  Live teammates' state comes from the cmux hooks the claude shim injects — no screen
+  scraping. A finished teammate has no surface, so its state comes from the report on disk
+  and its registry row.
   The status pane opens automatically (unless `--no-monitor`) and repaints only when the
   frame changes, checking every 30 s (override with `TEAM_STATUS_INTERVAL`). It exits when
   the team is closed. Needs cmux or tmux. Under `--inline` there is no registry and no pane; track
@@ -293,5 +293,4 @@ side's best evidence) · Dropped (refuted) · Next steps.
 - Give roles separate files when the task edits code.
 - This emulates Claude Code's experimental agent teams for setups where they're
   unavailable (e.g. disabled by managed settings); the lead relays challenge
-  rounds instead of a native shared mailbox. Native `cmux claude-teams` is blocked
-  by managed settings on this gateway — this skill remains the supported path.
+  rounds instead of a native shared mailbox.

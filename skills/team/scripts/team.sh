@@ -60,7 +60,7 @@
 #   team.sh --help              -> prints this header. Any other unknown subcommand exits 2 (it never falls through to spawn).
 # Exit codes: 0 ok; 1 fallback/warning; 2 refused (usage, bad input, secret/PII hit);
 # 3 not found / missing dependency (role, model, registry, python3, cmux); 4 team cap reached or spawn lock busy;
-# 5 role-promote/role-pull direction refused.
+# 5 role-promote/role-pull conflict (needs --force).
 # .team/ always means the MAIN checkout's .team/, also when run from inside a linked worktree.
 # Needs python3 (models, pick-model, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
 # Pane commands (spawn, close, finish, reap, lead-title, show/list, monitor) need a multiplexer (lib/mux.sh):
@@ -73,6 +73,7 @@
 # need neither.
 # TEAM_MODELS_FILE: read the model picker (and the default "model") from this JSON file instead of
 # managed-settings/settings.json.
+# TEAM_ROLES_DIR: the shared role library (default ~/.claude/team/roles).
 # --worktree: the teammate works in its own git worktree .team/worktrees/<team>-<role>
 # on branch team/<team>-<role> or --branch <name> (created from HEAD, or reused if it survived a `clean`), like a
 # separate person. Needs at least one commit. Each new worktree is pre-accepted in ~/.claude.json
