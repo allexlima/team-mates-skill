@@ -1135,6 +1135,47 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
 # perm-3: on a build run (--worktree) Edit is scoped to the worktree and the teammate's run-dir files
 # (logical and physical paths: a rule is checked against both the path asked for and the file it
 # resolves to), and every spawn denies git commit's hook-skipping flags.
+# cave-1..4: the caveman style is found wherever the agent can have it (user skills, ~/.agents,
+# an installed plugin), and --no-caveman still leaves it out.
+{
+  H="$W/home"; [ "$HOME" = "$H" ] || { echo "cave tests need the scratch HOME" >&2; exit 1; }   # never a real ~/.claude
+  R="$W/cave"; _mkgit "$R"; pf="$R/p.md"; printf 'prompt\n' > "$pf"; TM="cave$$"
+  sp="$TEAM_REG_DIR/team-$TM-c.sysprompt.md"
+  _cave_spawn() { _reset_logs; (cd "$R" && bash "$TEAM_SH" spawn "$@" "$TM" c "$pf" sonnet) >/dev/null 2>&1 || true; rm -f "$TEAM_REG_DIR/team-$TM.tabs"; }
+  mkdir -p "$H/.claude/skills/caveman"; printf 'CAVE-USER\n' > "$H/.claude/skills/caveman/SKILL.md"
+  _cave_spawn; grep -q CAVE-USER "$sp" 2>/dev/null && pass "cave-1: caveman found in ~/.claude/skills" \
+    || fail "cave-1: caveman in ~/.claude/skills" "$(head -c 200 "$sp" 2>/dev/null)"
+  _cave_spawn --no-caveman; ! grep -q CAVE-USER "$sp" 2>/dev/null && pass "cave-2: --no-caveman leaves it out" \
+    || fail "cave-2: --no-caveman"
+  rm -rf "$H/.claude/skills/caveman"
+  mkdir -p "$H/.agents/skills/caveman"; printf 'CAVE-AGENTS\n' > "$H/.agents/skills/caveman/SKILL.md"
+  _cave_spawn; grep -q CAVE-AGENTS "$sp" 2>/dev/null && pass "cave-3: caveman found in ~/.agents/skills" \
+    || fail "cave-3: caveman in ~/.agents/skills"
+  rm -rf "$H/.agents/skills/caveman"
+  ip="$H/.claude/plugins/cache/mkt/caveman/1.0"; mkdir -p "$ip/skills/caveman" "$H/.claude/plugins"
+  printf 'CAVE-PLUGIN\n' > "$ip/skills/caveman/SKILL.md"
+  printf '{"version":2,"plugins":{"caveman@mkt":[{"scope":"user","installPath":"%s"}]}}\n' "$ip" > "$H/.claude/plugins/installed_plugins.json"
+  _cave_spawn; grep -q CAVE-PLUGIN "$sp" 2>/dev/null && pass "cave-4: caveman found in an installed plugin" \
+    || fail "cave-4: caveman in an installed plugin"
+  rm -rf "$H/.claude/plugins"
+}
+
+# gate-1: a --worktree spawn warns when no-mistakes is installed but this repo has no gate remote.
+{
+  R="$W/gate"; _mkgit "$R"; pf="$R/p.md"; printf 'prompt\n' > "$pf"; TM="gate$$"
+  mkdir -p "$W/nmbin"; printf '#!/bin/sh\nexit 0\n' > "$W/nmbin/no-mistakes"; chmod +x "$W/nmbin/no-mistakes"
+  _reset_logs
+  out=$(cd "$R" && PATH="$W/nmbin:$PATH" bash "$TEAM_SH" spawn --worktree "$TM" g "$pf" sonnet 2>&1) || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  _git -C "$R" remote add no-mistakes "$R" 2>/dev/null
+  _reset_logs
+  out2=$(cd "$R" && PATH="$W/nmbin:$PATH" bash "$TEAM_SH" spawn --replace --worktree "$TM" g "$pf" sonnet 2>&1) || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [[ $out == *"gate-init"* ]] && [[ $out2 != *"gate-init"* ]] \
+    && pass "gate-1: --worktree spawn warns when the no-mistakes gate is not set up" \
+    || fail "gate-1: missing-gate warning" "out=${out:0:200} out2=${out2:0:200}"
+}
+
 _disallow_of() {
   grep -oE -- '--disallowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--disallowedTools //; s/\\//g' || true
 }

@@ -162,6 +162,31 @@ _secret_lines() { sed -E 's/(^|[^A-Za-z0-9._%+-])git@/\1git /g' | grep -nEi -- "
 # pipeline fail, and it falls back to $PWD.
 _root() { git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p' || pwd; }
 _roles_lib() { echo "${TEAM_ROLES_DIR:-$HOME/.claude/team/roles}"; }
+# The caveman style's SKILL.md, from wherever the agent can have it: project skills, user skills,
+# ~/.agents (npx skills), then any installed plugin's skills/caveman (or caveman-mode). Exit 1 if none.
+_caveman_file() {
+  local f
+  for f in "$(_root)/.claude/skills/caveman/SKILL.md" "$HOME/.claude/skills/caveman/SKILL.md" \
+      "$HOME/.agents/skills/caveman/SKILL.md"; do
+    [ -f "$f" ] && { printf '%s\n' "$f"; return 0; }
+  done
+  python3 - "$HOME/.claude/plugins/installed_plugins.json" <<'PY'
+import json, os, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        plugins = json.load(fh).get("plugins") or {}
+except Exception:
+    sys.exit(1)
+for entries in plugins.values():
+    for e in entries or []:
+        ip = e.get("installPath") if isinstance(e, dict) else None
+        for name in ("caveman", "caveman-mode"):
+            f = os.path.join(ip or "", "skills", name, "SKILL.md")
+            if ip and os.path.isfile(f):
+                print(f); sys.exit(0)
+sys.exit(1)
+PY
+}
 # The registry dir holds every per-team state file (.tabs registry, .round and .sync sidecars, system
 # prompts, launchers) and trusts what it reads there, so by default it is a private per-user dir, not
 # bare /tmp: any local user could pre-create or symlink a name in a shared dir. TEAM_REG_DIR overrides
@@ -1009,6 +1034,10 @@ elif [ -n "$worktree" ]; then
     fi
   fi
   echo "worktree $dir (branch $branch)"
+  # Build-run teammates gate their branch with `no-mistakes axi run`, which needs the gate remote.
+  if command -v no-mistakes >/dev/null 2>&1 && ! git -C "$root" remote get-url no-mistakes >/dev/null 2>&1; then
+    echo "warn: no-mistakes is installed but this repo has no gate; run \`team.sh gate-init\` so $title can gate its branch" >&2
+  fi
   # A worktree is its own git top-level, so it never inherits the repo's workspace
   # trust and `claude` would raise the trust prompt in every pane. Pre-accept this
   # one path. Best-effort: a failure here only means the prompt comes back.
@@ -1028,7 +1057,7 @@ with open(tmp, "w", encoding="utf-8") as f:
 os.replace(tmp, p)
 PY
 fi
-cavefile="$HOME/.agents/skills/caveman/SKILL.md"
+cavefile=$(_caveman_file) || cavefile=
 rulesfile="$here/../references/teammate-rules.md"
 # claude keeps only the LAST --append-system-prompt-file, so these are concatenated
 # rather than passed as two flags: the always-on teammate rules (parallelise with
