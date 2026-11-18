@@ -304,7 +304,7 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
   `_team_allow` list in team.sh): Read, Glob, Grep, Agent, SendMessage,
   ListAgents, and Edit/Write (on a build run, scoped to the teammate's own worktree plus its
-  report, status file and `tasks.md`; on other runs, any path); Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
+  report, status file and `tasks.md`; on other runs, any path).; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
   DevTools MCP tools (UI QA needs Google Chrome stable and the MCP enabled; see the
@@ -312,9 +312,11 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run. One hard block: `git commit --no-verify` (and `-n`) is denied for every teammate
+  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted paths go to the auto classifier. One hard block: `git commit --no-verify` (and `-n`) is denied for every teammate
   through `--disallowedTools`, since it skips the secret-scanning hooks; a combined short flag
-  such as `-an` is not caught.
+  such as `-an` is not caught, and no deny rule matches a git command that starts with a global
+  option, so `git -C <dir> commit --no-verify` and `git -c core.hooksPath=/dev/null commit` are
+  not blocked (measured with live `claude -p` probes, CLI 2.1.306).
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
