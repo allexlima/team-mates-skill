@@ -299,9 +299,10 @@ side's best evidence) · Dropped (refuted) · Next steps.
     commands that skip hooks (`--no-verify`, `commit -n`, core.hooksPath, aliases or
     include files set with `-c`, `--config-env` or `git config`, and the `GIT_CONFIG*`
     variables), also after `-C <dir>`, `sudo`, `env` or inside `sh -c`.
-  The fence does not make Bash safe. Every other Bash write is unfenced, and so are git
-  commands built by `eval`, backticks, `$(...)`, `xargs`, `env -S` strings or a changed
-  `HOME`. If the plugin's hooks never run (for example under a managed
+  The fence does not make Bash safe. Every other Bash write is unfenced, and so is git run
+  through `eval`, backticks, `xargs` or another interpreter (`python3 -c`), git pointed at
+  another config with `HOME=` or `XDG_CONFIG_HOME=`, and aliases already in your git config.
+  If the plugin's hooks never run (for example under a managed
   `allowManagedHooksOnly` policy), there is no event log and no fence. The plugin is named
   `team-mates-events`; an installed plugin of that name is replaced for the session.
 - The hard cap is 8 teammates (spawn refuses beyond it).
