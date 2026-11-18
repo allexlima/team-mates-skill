@@ -37,7 +37,8 @@ table are relative to `skills/team/` (`HELP.md`, `teammate-rules.md` and
    (`inherit the lead`, `stacked`, `3–5`, `2–5`, `as much as possible`, `team.sh park`,
    `cmux browser`, `cmux-only` and `cmux is required`), confirms every subcommand is documented in the `team.sh` header,
    confirms every `--flag` in `SKILL.md`'s argument-hint is explained in `HELP.md`,
-   and fails if the repo root holds a `SKILL.md`.
+   fails if the repo root holds a `SKILL.md`, and fails if a doc names a
+   `~/.claude/skills/team/…` or `<abs skill dir>/…` path that is not in the skill.
    Fix what it reports.
 
 Deterministic checks belong in a hook, not prose. `.githooks/pre-commit` runs

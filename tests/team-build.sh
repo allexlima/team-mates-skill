@@ -1121,6 +1121,11 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   out=$(bash "$D/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
   [ "$rc" = 1 ] && [[ $out == *"repo root"* ]] && pass "doccheck: refuses a root SKILL.md" \
     || fail "doccheck: refuses a root SKILL.md" "rc=$rc out=${out:0:200}"
+  # A doc path to a file that moved must fail doccheck (SKILL.md once named <abs skill dir>/git-practices.md).
+  rm -f "$D/SKILL.md"; printf '\nSee `~/.claude/skills/team/gone.md`.\n' >> "$D/skills/team/SKILL.md"
+  out=$(bash "$D/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
+  [ "$rc" = 1 ] && [[ $out == *"gone.md"* ]] && pass "doccheck: refuses a doc path that is not in the skill" \
+    || fail "doccheck: refuses a doc path that is not in the skill" "rc=$rc out=${out:0:200}"
 }
 
 # ══════════════════════════════════════════════════════════════════
