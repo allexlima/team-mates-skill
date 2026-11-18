@@ -74,7 +74,7 @@ It stores conclusions and pointers only, never secrets or raw data.
 
 ## Contributing
 
-Only `skills/team/` ships. The lead's procedure is in [SKILL.md](skills/team/SKILL.md), the rules every teammate gets are in [teammate-rules.md](skills/team/references/teammate-rules.md), and commit and PR rules are in [git-practices.md](skills/team/references/git-practices.md). `tests/`, `CLAUDE.md` and `.githooks/` stay in the repo for development. Read [CLAUDE.md](CLAUDE.md) before changing anything: each fact has one owner file, and it lists the test suites to run before a merge.
+Only `skills/team/` ships. The lead's procedure is in [SKILL.md](skills/team/SKILL.md), the rules every teammate gets are in [teammate-rules.md](skills/team/references/teammate-rules.md), and commit and PR rules are in [git-practices.md](skills/team/references/git-practices.md). `tests/`, `CLAUDE.md` and `.github/` stay in the repo for development. Read [CLAUDE.md](CLAUDE.md) before changing anything: it holds the branch workflow (branch from `dev`, PR into `dev`, CI must be green), the one-owner-per-fact rule and the test suites to run before a merge.
 
 ## License
 

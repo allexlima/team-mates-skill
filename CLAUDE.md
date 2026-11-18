@@ -41,16 +41,31 @@ table are relative to `skills/team/` (`HELP.md`, `teammate-rules.md` and
    `~/.claude/skills/team/…` or `<abs skill dir>/…` path that is not in the skill.
    Fix what it reports.
 
-Deterministic checks belong in a hook, not prose. `.githooks/pre-commit` runs
-`doccheck`; enable it with `git config core.hooksPath .githooks`. Where a global
-`core.hooksPath` is already set (e.g. a Databricks secret-scanning hook —
-`git config --get core.hooksPath`), don't override it: run `bash skills/team/scripts/team.sh doccheck`
-in CI or as a manual pre-push check so you keep the global hook.
+CI runs `doccheck` on every push and PR, so there is no local hook to enable.
+
+## Branch workflow
+
+`main` is stable and released; `dev` is the integration branch. Both are
+protected: PR required, green CI required, no force-push or deletion, enforced
+for admins, 0 approvals.
+
+1. Branch from `dev` as `feat/…`, `fix/…`, `docs/…`, `ci/…` or `chore/…`.
+2. Commit as `git-practices.md` says, one logical change each.
+3. Run the full gate set below locally with `TEAM_MEMBER` unset.
+4. Open a PR into `dev` through the no-mistakes gate
+   (`no-mistakes axi run --base-branch dev`). Wait for the CI checks
+   `gate (macos-latest)` and `gate (ubuntu-latest)`; never merge on red.
+5. Release: PR `dev` → `main`, then an annotated `vX.Y.Z` tag on `main` and a
+   GitHub Release. Move `CHANGELOG.md`'s `[Unreleased]` entries under the new
+   version in the PR that releases it.
+
+CI (`.github/workflows/ci.yml`) runs the gate set below on macOS and Ubuntu,
+except `facts-lint`: it reads the git-ignored `.team/facts.md`, so it is local-only. Change the list here and in the workflow in the same commit.
 
 ## The full gate set
 
 `doccheck` is the doc guard only. Before merging a branch, run every suite
-from the main checkout with `TEAM_MEMBER` unset (an inherited value makes
+with `TEAM_MEMBER` unset (an inherited value makes
 `rev4-3` fail for the wrong reason):
 
 ```
