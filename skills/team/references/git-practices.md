@@ -6,6 +6,8 @@ covers `gh`.
 
 Reference: *Pro Git* (Chacon & Straub), *Continuous Delivery* (Humble & Farley), *Accelerate* (Forsgren et al.)
 
+**Contents:** When to Apply · Branching Strategy · Commit Messages · Pull Requests · Git Hooks · Automated Versioning and Release · DORA Metrics Connection · Checklist · Key References · Using gh on a /team build run
+
 ## When to Apply
 
 - Choosing or evaluating a branching strategy for a team or project

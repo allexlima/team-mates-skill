@@ -5,6 +5,8 @@ interactive `claude` session in its own pane; this session is the **lead**:
 it plans the roles, relays findings between teammates for challenge rounds,
 and writes the final synthesis.
 
+**Contents:** Usage · Options · Before spawning · Choosing roles · Choosing models · Run types · Team shape · Every teammate · Later rounds: resumed teammates · Project memory: .team/ · Where teammates appear · Progress (cmux sidebar) · Cleanup: team.sh reap [--yes] [--exclude <team>] · Examples · While it runs · Output · Notes
+
 ## Usage
     /team <task> [options]
 
