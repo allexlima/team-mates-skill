@@ -1,12 +1,15 @@
 """PreToolUse fence for /team teammates (active only when TEAM_FENCE_ROOTS is set).
 
 - Edit/Write/MultiEdit/NotebookEdit: deny a path outside TEAM_FENCE_ROOTS (':'-separated:
-  the teammate worktree and its run files).
-- Bash: deny git commands that skip hooks: --no-verify (or commit -n), and core.hooksPath
-  set through -c, --config-env or GIT_CONFIG_* variables. The git argv is parsed, so
-  `git -C <dir> ...` and `git -c k=v ...` forms are caught, as are `git config` writes of
-  core.hooksPath. Other Bash writes, and commands built by eval, backticks, $(...) or xargs,
-  are not fenced.
+  the teammate worktree, its run dir and its scratch dir). ~/.claude stays denied.
+- Bash: deny git commands that skip hooks: the no-verify flag (or commit -n), and config
+  keys core.hooksPath, alias.* and include*/includeIf.* set via -c, --config-env or a
+  `git config` write; also GIT_CONFIG, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM (a whole
+  config file), and GIT_CONFIG_PARAMETERS/KEY_n naming one of those keys. The git argv is
+  parsed, so `git -C <dir> ...` and wrapper forms (env, sudo, sh -c, ...) are caught.
+Known gaps, not fenced: every other Bash write; commands built by eval, backticks, $(...),
+xargs or `env -S` split strings; HOME= or XDG_CONFIG_HOME= pointing git at another config;
+aliases already present in the user's git config.
 Reads tool_input to decide and never logs it.
 """
 import json
@@ -14,14 +17,15 @@ import os
 import shlex
 import sys
 
-WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout"}
+WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
 WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after"}
 WRAPPER_VALUE_SHORT = set("uCSPnask")  # a short-option cluster ending in one of these takes a value
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
-HOOKS = "git must not override core.hooksPath"
-CONFIG_READS = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list"}
+HOOKS = "git must not override core.hooksPath, aliases or includes"
+CONFIG_SAFE = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list", "--unset", "--unset-all", "unset"}
+CONFIG_FILE_VARS = {"GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"}
 
 
 def deny(reason):
@@ -34,7 +38,9 @@ def deny(reason):
 
 
 def hookspath(text):
-    return "hookspath" in text.lower()
+    """True if text names a config key that can redirect hooks or rewrite git commands."""
+    t = text.lower()
+    return "hookspath" in t or "alias." in t or "include" in t
 
 
 def segments(cmd):
@@ -71,7 +77,7 @@ def git_problem(argv):
     if i >= len(argv):
         return None
     sub = argv[i]
-    if sub == "config" and any(map(hookspath, argv[i + 1:])) and not CONFIG_READS & set(argv[i + 1:]):
+    if sub == "config" and any(map(hookspath, argv[i + 1:])) and not CONFIG_SAFE & set(argv[i + 1:]):
         return HOOKS
     for a in argv[i + 1:]:
         if a == "--":
@@ -96,7 +102,7 @@ def check_command(cmd, depth=0):
         # drop leading VAR=value assignments and wrappers such as env/command/exec
         while argv and (os.path.basename(argv[0]) in WRAPPERS or "=" in argv[0].split("/")[0]):
             head = argv.pop(0)
-            if head.startswith("GIT_CONFIG") and hookspath(head):
+            if head.split("=", 1)[0] in CONFIG_FILE_VARS or (head.startswith("GIT_CONFIG") and hookspath(head)):
                 return HOOKS
             while argv and argv[0].startswith("-") and len(argv[0]) > 1:
                 opt = argv.pop(0)

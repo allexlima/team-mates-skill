@@ -110,7 +110,7 @@ deny	git status\ngit commit -n
 deny	bash -lc "git commit --no-verify"
 deny	sh -ec 'git commit -n'
 deny	git config core.hooksPath /dev/null
-deny	git -C . config --unset core.hooksPath
+allow	git -C . config --unset core.hooksPath
 deny	export GIT_CONFIG_PARAMETERS="'core.hooksPath=x'"; git commit
 deny	git commit --no-verif
 deny	git push --no-ver
@@ -140,6 +140,19 @@ allow	git -c user.name=x commit -m ok
 allow	echo git commit --no-verify
 allow	grep -rn no-verify .
 allow	git commit -m "unbalanced
+deny	git -c alias.ci=commit ci -n
+deny	git -c "alias.x=commit -n" x
+deny	git -c include.path=/tmp/evil.cfg commit
+deny	git -c includeIf.gitdir:/x.path=/tmp/e commit
+deny	git config alias.ci "commit -n"
+deny	GIT_CONFIG_GLOBAL=/tmp/evil.cfg git commit
+deny	GIT_CONFIG_SYSTEM=/tmp/evil.cfg git commit
+deny	GIT_CONFIG=/tmp/evil.cfg git commit
+deny	sudo git commit -n
+deny	sudo -u root git -C . commit -n
+allow	git config --unset core.hooksPath
+allow	git -c user.name=include commit -m ok
+allow	sudo ls
 CASES
 check "writer is executable" '[ -x "$H" ]'
 
