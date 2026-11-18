@@ -4,7 +4,7 @@
 # worktree and transcript. Nothing touches real panes.
 #   J*  status --json: the one document the TUI reads (joined registry fields, parsed tasks, live state)
 #   U*  the summary's `unassigned` count, shared by the classic monitor and the TUI
-#   P*  monitor_tui.py: its stdlib layer (--selftest), and a Textual render when Textual is installed
+#   P*  monitor_tui.py: its stdlib layer (--selftest), and a Textual render + key/screen walk when Textual is installed
 #   X*  all teammates finished: the TUI's exit 4 closes the pane (stub TUI, real pty)
 #   W*  status --watch picks the classic monitor when TEAM_MONITOR_UI=classic
 # USAGE:  bash tests/monitor-tui.sh
@@ -130,6 +130,11 @@ if python3 -c 'import textual' 2>/dev/null; then
   done
   [ -z "$miss" ] && pass "P2: the TUI renders the live team: header, cards, backlog, and the tool in flight + context from the transcript" \
     || fail "P2: TUI render" "missing:$miss"
+  # P4: every screen and key once (details + its tabs, help, theme, refresh, show), on the demo and the live fixture.
+  wd=$(timeout 120 python3 "$TUI" --demo --walk 2>&1); wdrc=$?
+  wl=$(cd "$G" && timeout 120 python3 "$TUI" --team j1 --team-sh "$TEAM_SH" --walk 2>&1); wlrc=$?
+  [ "$wdrc" = 0 ] && [ "$wlrc" = 0 ] && pass "P4: the TUI walks every screen and key without a crash (demo + live fixture)" \
+    || fail "P4: TUI walk" "demo rc=$wdrc $(tail -2 <<<"$wd" | tr '\n' ' ') live rc=$wlrc $(tail -2 <<<"$wl" | tr '\n' ' ')"
   ls "$RUN/monitor/history.jsonl" >/dev/null 2>&1 && pass "P3: the TUI keeps its history in <run>/monitor/history.jsonl" || fail "P3: history file" "none"
 else
   echo "SKIP  P2/P3: Textual is not installed (pip install textual)"

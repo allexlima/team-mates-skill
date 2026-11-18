@@ -1127,7 +1127,8 @@ if HAVE_TEXTUAL:
             samples = list(hist.samples.get(m["title"], ())) if hist else []
             rows = [Text.assemble(("Self-reported progress over time  ", "bold"),
                                   ("(each point is a status update)", PAL["dim"])),
-                    spark([p for _, _, p in samples], max(10, self.size.width - 4), color), Text("")]
+                    spark([p for _, _, p in samples], max(10, self.size.width - 4),
+                          PAL[STATES.get(m["state"], ("", "", "dim"))[2]]), Text("")]
             for t, k, p in samples[-18:][::-1]:
                 rows.append(Text.assemble((time.strftime("%H:%M:%S", time.localtime(t)) + "  ", PAL["dim"]),
                                           (f"{k or '-':<5}", "bold"), gbar(p or 0, 20), f" {p}%"))
@@ -1506,6 +1507,8 @@ def main(argv=None):
     ap.add_argument("--screenshot", help="render one frame headless to this .svg and exit")
     ap.add_argument("--size", default="140x44", help="screenshot size, COLSxROWS")
     ap.add_argument("--open", choices=("details", "help"), help="screenshot: open this screen first")
+    ap.add_argument("--walk", action="store_true",
+                    help="headless: press every key and open every screen once; exit 1 on a crash")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -1530,6 +1533,36 @@ def main(argv=None):
     autoclose = os.environ.get("TEAM_MONITOR_AUTOCLOSE", "1") != "0"
     grace = float(os.environ.get("TEAM_MONITOR_CLOSE_GRACE") or 4)
     app = TeamMonitor(source, hist, interval, autoclose=autoclose and not a.demo, grace=grace)
+    if a.walk:
+        import asyncio
+
+        async def walk():
+            async with app.run_test(size=(140, 44)) as pilot:
+                for _ in range(30):
+                    await pilot.pause(0.2)
+                    if app.view:
+                        break
+                await pilot.pause(1.0)
+                await pilot.press("right", "left", "down", "up")
+                app._cards()[0].focus()
+                await pilot.press("enter")                      # details; then every tab of it
+                await pilot.pause(0.5)
+                tabs = app.screen.query_one(TabbedContent)
+                for tab in ("t-act", "t-hist", "t-info", "t-report"):
+                    tabs.active = tab
+                    await pilot.pause(0.3)
+                await pilot.press("s", "escape", "question_mark", "escape", "t", "t", "r", "1", "2", "s")
+                await pilot.pause(0.5)
+                assert app.is_running and isinstance(app.screen, Screen), "the app stopped during the walk"
+        try:
+            asyncio.run(walk())
+        except BaseException as e:   # a crash inside the app must fail the walk, not just print
+            import traceback
+            traceback.print_exc()
+            print(f"monitor_tui --walk: FAILED: {type(e).__name__}: {e}", file=sys.stderr)
+            return 1
+        print("monitor_tui --walk: ok")
+        return 0
     if a.screenshot:
         import asyncio
         cols, rows = (int(x) for x in a.size.lower().split("x"))
@@ -1556,6 +1589,8 @@ def main(argv=None):
         asyncio.run(shot())
         return 0
     rc = app.run()
+    if getattr(app, "_exception", None):   # a crash is not a quit: let status.sh fall back to the classic monitor
+        return 1
     return rc if isinstance(rc, int) else EXIT_QUIT
 
 
