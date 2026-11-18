@@ -275,7 +275,8 @@ side's best evidence) · Dropped (refuted) · Next steps.
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
-  `_team_allow` list in team.sh): Read, Glob, Grep, Edit, Write, Agent, SendMessage,
+  `_team_allow` list in team.sh): Read, Glob, Grep, Edit, Write (on a build run, Edit only
+  on its worktree and its own report, tasks.md and status), Agent, SendMessage,
   ListAgents; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
@@ -283,7 +284,7 @@ side's best evidence) · Dropped (refuted) · Next steps.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run.
+  still run. `git commit --no-verify` and `-n` (hook skipping) are denied outright.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on

@@ -104,10 +104,12 @@
 # --worktree. With no [model], the tier is that of the default model the teammate starts on
 # (ANTHROPIC_MODEL, else "model" in managed-settings, else ~/.claude/settings.json), so a haiku-tier
 # default gets the same treatment. Every other tier uses TEAM_PERMISSION_MODE (default auto) plus the
-# _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP).
+# _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP; Edit
+# scoped to the worktree and run-dir files on a build run). Every teammate gets _team_deny (git commit
+# hook skipping) as --disallowedTools.
 # Spawned tabs/panes are recorded in $TEAM_REG_DIR/team-<team>.tabs (default: the private dir
-# ${TMPDIR:-/tmp}/team-<uid>, created 0700 and refused unless it is a real directory you own with mode
-# 700; tests point TEAM_REG_DIR at a scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
+# ${TMPDIR:-/tmp}/team-<uid>, /tmp when TMPDIR is relative; either dir is created 0700 and refused unless
+# it is a real directory you own with mode 700; tests point TEAM_REG_DIR at a scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
 # "cmux <ref> <layout:pane|tab|dash> <title> <model|-> <subagent-model|-> <run-dir|-> <project-root>
 #  <state:live|finished> <session-id|-> <cwd>". <state> is `finished` once `finish` closed the teammate on
 # purpose: such a row is kept by prune and reap (only `close`, which ends the team, drops it), holds no cap
