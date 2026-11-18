@@ -89,4 +89,4 @@ the slowest teammate sets the pace for the whole team.
   (badge without a macOS banner; best-effort, cmux hooks can override it). Question:
   `cmux notify --title "<team>-<role>" --subtitle "<team>-<role>" --body "NEEDS INPUT: <one-line summary>"`
   (keeps the banner). Do not rely on the ring surviving your pane. Skip silently if cmux is not
-  available (--inline mode).
+  available (--inline mode, or a tmux run).

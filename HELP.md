@@ -158,7 +158,7 @@ On a new machine the shared library starts empty until you sync it.
                         Same two-column grid; --tabs gives one tmux window each. tmux has
                         no hook feed, so the monitor can't show waiting or idle there
                         (stalled? still shows after 10 silent minutes), there is no
-                        sidebar pill, and rows can't be clicked.
+                        sidebar pill, and clicking a row needs tmux's `mouse on` (the number keys always work).
     --inline            No panes: teammates run as subagents inside your session.
                         Works without cmux.
 

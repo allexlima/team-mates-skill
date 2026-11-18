@@ -104,7 +104,7 @@ Only conclusions and pointers are stored: never secrets, PII, or raw data. A sha
 ## Where teammates appear
 
 - **cmux (default, recommended).** Your tab splits: you and the lead on the left, teammates in a two-column grid on the right. Finished teammates close. Install from [cmux.dev](https://cmux.dev).
-- **tmux (fallback).** Used when you run `/team` inside tmux but not cmux. The grid is the same, but the monitor is lighter: it can't show waiting or idle states, there is no sidebar pill, and its rows can't be clicked.
+- **tmux (fallback).** Used when you run `/team` inside tmux but not cmux. The grid is the same, but the monitor is lighter: it can't show waiting or idle states, there is no sidebar pill, and clicking a row needs tmux's `mouse on` (the number keys always work).
 - **`--inline`.** No panes. Teammates run as subagents inside your session, so no cmux or tmux is needed.
 
 UI checks run in Google Chrome through the Chrome DevTools MCP.
