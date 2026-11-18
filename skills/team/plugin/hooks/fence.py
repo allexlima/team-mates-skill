@@ -14,10 +14,11 @@ import os
 import shlex
 import sys
 
-WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export"}
+WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
-WRAPPER_VALUE_OPTS = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-n", "--adjustment", "-P", "-a"}
+WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after"}
+WRAPPER_VALUE_SHORT = set("uCSPnask")  # a short-option cluster ending in one of these takes a value
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath"
 CONFIG_READS = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list"}
@@ -93,18 +94,21 @@ def check_command(cmd, depth=0):
         return None  # unbalanced quotes: the shell rejects the command too
     for argv in segs:
         # drop leading VAR=value assignments and wrappers such as env/command/exec
-        while argv and (argv[0] in WRAPPERS or "=" in argv[0].split("/")[0]):
+        while argv and (os.path.basename(argv[0]) in WRAPPERS or "=" in argv[0].split("/")[0]):
             head = argv.pop(0)
             if head.startswith("GIT_CONFIG") and hookspath(head):
                 return HOOKS
             while argv and argv[0].startswith("-") and len(argv[0]) > 1:
                 opt = argv.pop(0)
-                if opt in WRAPPER_VALUE_OPTS and argv:
+                short = opt[1] != "-"
+                if argv and (opt in WRAPPER_VALUE_LONG or (short and opt[-1] in WRAPPER_VALUE_SHORT)):
                     val = argv.pop(0)
-                    if opt in ("-S", "--split-string") and depth < 3:
+                    if (opt == "--split-string" or (short and opt[-1] == "S")) and depth < 3:
                         why = check_command(val, depth + 1)
                         if why:
                             return why
+            if os.path.basename(head) == "timeout" and argv:
+                argv.pop(0)
         if not argv:
             continue
         name = os.path.basename(argv[0])
