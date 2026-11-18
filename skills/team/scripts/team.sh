@@ -202,7 +202,8 @@ _reg_dir() {
   d="${t%/}/team-$EUID"
   if [ -n "${TEAM_REG_DIR:-}" ]; then
     d=$TEAM_REG_DIR; case $d in /*) ;; *) d="$PWD/$d" ;; esac
-    while [ "$d" != / ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done   # "link/" would pass [ -L ]
+    # "link/" or "link/." would pass [ -L ]: strip trailing "/" and "/." first
+    while [ "$d" != / ]; do case $d in */) d=${d%/} ;; */.) d=${d%/.} ;; *) break ;; esac; done
   fi
   mkdir -m 700 "$d" 2>/dev/null || true
   m=$(stat -c %a "$d" 2>/dev/null || stat -f %Lp "$d" 2>/dev/null) || m=

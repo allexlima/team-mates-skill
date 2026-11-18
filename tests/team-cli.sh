@@ -68,7 +68,7 @@ grep -qxF "$mpath" "$W/opens.log" \
 # 0. TEAM_REG_DIR gets the same checks as the default private dir: a real directory we own, mode 700,
 #    not a symlink (created 0700 when missing); a relative TMPDIR never yields a cwd-relative registry.
 mkdir -m 700 "$W/rd-ok"; ln -s "$W/rd-ok" "$W/rd-link"; mkdir -m 755 "$W/rd-755"; : > "$W/rd-file"
-for case in rd-link rd-link/ rd-755 rd-file; do
+for case in rd-link rd-link/ rd-link/. rd-link/./ rd-755 rd-file; do
   out=$(TEAM_REG_DIR="$W/$case" bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
   [ $rc = 3 ] && [[ $out == *"refusing registry dir"* ]] \
     && pass "reg-dir: TEAM_REG_DIR $case refused" || fail "reg-dir: TEAM_REG_DIR $case refused" "rc=$rc out=${out:0:160}"
