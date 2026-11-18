@@ -241,9 +241,9 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
                  so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
                  Exception: it is pinned as "idle with work pending" while an unassigned
-                 ready task exists (owner `any` or not live), or while the idle teammate has
-                 a ready task on its own line — hand it that task. A ready task a live
-                 teammate claims by starting its status line with "T<n>:" counts as assigned.
+                 ready task exists (owner `any` or not live), or while the idle teammate holds
+                 a ready task, on its own line or claimed by starting its status line with
+                 "T<n>:" — hand it that task. A claimed task counts as assigned, not unassigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
   Live teammates' state comes from the cmux hooks the claude shim injects — no screen
