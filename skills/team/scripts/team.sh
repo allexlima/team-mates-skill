@@ -68,7 +68,7 @@
 # 3 not found / missing dependency (role, model, registry, python3, cmux); 4 team cap reached or spawn lock busy;
 # 5 role-promote/role-pull conflict (needs --force).
 # .team/ always means the MAIN checkout's .team/, also when run from inside a linked worktree.
-# Needs python3 (models, pick-model, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
+# Needs python3 (models, pick-model, prompt, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
 # Pane commands (spawn, close, finish, reap, lead-title, show/list, monitor) need a multiplexer (lib/mux.sh):
 # cmux >= 0.65.0 answering `cmux ping` (default, recommended), else tmux. They exit 3 with an install hint
 # when neither is there. spawn, lead-title, show/list and monitor open or focus panes, so they must run

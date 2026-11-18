@@ -28,6 +28,7 @@ case $out in *"$R/.team/runs/2026-01-01-tt/status/a.txt"*) pass "P6: absolute ru
 case $out in *'git worktree'*'team/tt-a'*'gate it:'*) pass "P7: --build adds worktree, branch and gate rules" ;; *) fail "P7: --build adds worktree, branch and gate rules" ;; esac
 out=$(P)
 case $out in *'git worktree'*|*'gate it:'*|*git-practices*) fail "P8: no build rules without --build" ;; *) pass "P8: no build rules without --build" ;; esac
+case $out in *'gate above'*) fail "P8b: review run keeps the no-push rule, without the gate note" ;; *'are not yours to run: SendMessage'*) pass "P8b: review run keeps the no-push rule, without the gate note" ;; *) fail "P8b: review run keeps the no-push rule, without the gate note" ;; esac
 out=$(P --build --no-gate)
 case $out in *"don't push"*) case $out in *'gate it:'*) fail "P9: --no-gate leaves commits on the branch" ;; *) pass "P9: --no-gate leaves commits on the branch" ;; esac ;; *) fail "P9: --no-gate leaves commits on the branch" ;; esac
 out=$(P --tl tt-tl)
@@ -37,5 +38,7 @@ P --task T9 >/dev/null 2>&1; rc=$?; [ "$rc" = 2 ] && pass "P11: a task id not in
 (cd "$R" && bash "$TS" prompt tt a --lead l --brief "$W/brief.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 2 ] && pass "P12: missing --task exits 2" || fail "P12: missing --task exits 2" "rc=$rc"
 (cd "$R" && bash "$TS" prompt tt a --task T1 --lead l --brief "$W/none.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 2 ] && pass "P13: unreadable --brief exits 2" || fail "P13: unreadable --brief exits 2" "rc=$rc"
 (cd "$R" && bash "$TS" prompt zz a --task T1 --lead l --brief "$W/brief.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 3 ] && pass "P14: no run dir for the team exits 3" || fail "P14: no run dir for the team exits 3" "rc=$rc"
+RUN2="$R/.team/runs/2026-01-01-nh"; mkdir -p "$RUN2"; printf -- '- [ ] T1 nh-a: x\n' > "$RUN2/tasks.md"
+(cd "$R" && bash "$TS" prompt nh a --task T1 --lead l --brief "$W/brief.md" >/dev/null 2>&1); rc=$?; [ "$rc" = 2 ] && pass "P15: tasks.md without roster headers exits 2" || fail "P15: tasks.md without roster headers exits 2" "rc=$rc"
 set -e
 echo; [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

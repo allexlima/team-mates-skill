@@ -5,6 +5,7 @@
 # Usage: prompt <team> <role> --task T<n> --lead <name> --brief <file>
 #          [--build] [--no-gate] [--tl <name>] [--run <dir>] [--branch <name>]
 sub_prompt() {
+  _need_py
   local team=${1:-} role=${2:-}
   [ -n "$team" ] && [ -n "$role" ] || { echo "usage: team.sh prompt <team> <role> --task T<n> --lead <name> --brief <file> [--build] [--no-gate] [--tl <name>] [--run <dir>] [--branch <name>]" >&2; return 2; }
   shift 2
@@ -44,7 +45,7 @@ sub_prompt() {
 
   # Roster: the backlog header lines "<team>-<role> — model: ..." (no checkbox).
   local roster
-  roster=$(grep -oE "^$team-[a-z0-9-]+ — model" "$run/tasks.md" | sed 's/ — model//; s/.*/`&`/' | paste -sd, - | sed 's/,/, /g')
+  roster=$(grep -oE "^$team-[a-z0-9-]+ — model" "$run/tasks.md" | sed 's/ — model//; s/.*/`&`/' | paste -sd, - | sed 's/,/, /g' || true)
   [ -n "$roster" ] || { echo "prompt: no '$team-<role> — model: …' header lines in $run/tasks.md" >&2; return 2; }
 
   # Role spec (if any): the file minus its title and the Preferred tier paragraph.
@@ -59,7 +60,7 @@ $lens
   fi
 
   local gate_note='' tl_note=''
-  [ "$gate" = 1 ] && gate_note=" (the no-mistakes gate above is the one exception: run it as told, it pushes your branch for you)"
+  [ "$build$gate" = 11 ] && gate_note=" (the no-mistakes gate above is the one exception: run it as told, it pushes your branch for you)"
   [ "$tl" != "$lead" ] && tl_note=" (and to \`$tl\`)"
 
   # Conditional blocks first ({{if X}} / {{else}} / {{end}}, nestable, one marker per line), then values.
