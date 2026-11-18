@@ -173,7 +173,7 @@ inside that teammate. A report's notification is best-effort quiet (no macOS ban
 NEEDS INPUT keeps the banner; cmux says its notification hooks "can still override" that,
 so treat it as a preference. A report's ring is not a durable signal either, because the
 reporting teammate's pane closes once it is finished — rely on the pill's `N/M reported`.
-The lead calls `team.sh sync <team>` to update the sidebar; `team.sh sync --clear <team>`
+The monitor updates the sidebar every tick; with `--no-monitor` the lead calls `team.sh sync <team>` instead; `team.sh sync --clear <team>`
 removes it when the team closes. The status pane (see below) opens by default and is the
 detailed view; the sidebar is the glance view.
 
