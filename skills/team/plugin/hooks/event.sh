@@ -8,7 +8,8 @@ f=${TEAM_EVENTS_FILE:-}
 ev=$1
 case $ev in ''|*[!A-Za-z]*) f= ;; esac
 if [ -z "$f" ] || [ -L "$f" ] || [ ! -d "${f%/*}" ]; then cat >/dev/null; exit 0; fi
-v='[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_.:-]\{1,64\}\)".*'
+# No notion of nesting: a nested tool_name before tool_input would be logged; real payloads put it top-level first.
+v='[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_.:-]\{1,128\}\)".*'
 x=$(head -c 8192 | sed -n "1!q; s/\"tool_input\".*//; h; s/.*\"tool_name\"$v/,\"tool\":\"\1\"/p; g; s/.*\"notification_type\"$v/,\"ntype\":\"\1\"/p")
 cat >/dev/null
 set -f; set -- $x
