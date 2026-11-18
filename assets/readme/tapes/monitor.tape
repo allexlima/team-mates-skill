@@ -9,6 +9,10 @@ Set Padding 12
 Set Theme "Catppuccin Mocha"
 Set Framerate 10
 Hide
+# Warm uv's script env first so a cold cache doesn't fill the visible window.
+Type "uv run --script skills/team/scripts/monitor_tui.py --help >/dev/null 2>&1; clear"
+Enter
+Wait@180s
 Type "uv run --script skills/team/scripts/monitor_tui.py --demo --demo-speed 60 --demo-at 15"
 Enter
 Show
