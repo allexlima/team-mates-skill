@@ -97,7 +97,7 @@ st=$(cd "$G" && CMUX_GONE_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev
   || fail "J4: cmux identify parse" "$st"
 
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
-frame=$(cd "$G" && TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)
+frame=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)
 grep -q 'j1 · 2/5 tasks' <<<"$frame" && pass "J2: classic frame and status --json agree on 2/5 tasks" || fail "J2: classic frame counts" "$frame"
 
 # ═══ J3 — no registry: exit 3, nothing on stdout ═══
