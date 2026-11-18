@@ -167,6 +167,13 @@ deny	git commit -m a#b --no-verify
 deny	git commit -m "#12 fix" --no-verify
 deny	git config set core.hooksPath /dev/null
 deny	git config --file .git/config core.hooksPath x
+deny	if git commit -n; then :; fi
+deny	! git commit --no-verify
+deny	{ git commit -n; }
+deny	for x in 1; do git commit -n; done
+deny	git config core.hooksPath get
+deny	git config include.path list
+allow	git config get core.hooksPath
 allow	git status # --no-verify
 allow	git status\n# git commit --no-verify
 allow	git config remote.origin.url https://host/include-lib.git

@@ -12,6 +12,8 @@ if [ -z "$f" ] || [ -L "$f" ] || [ ! -d "${f%/*}" ]; then cat >/dev/null; exit 0
 v='[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_.:-]\{1,128\}\)".*'
 x=$(head -c 8192 | sed -n "1!q; s/\"tool_input\".*//; h; s/.*\"tool_name\"$v/,\"tool\":\"\1\"/p; g; s/.*\"notification_type\"$v/,\"ntype\":\"\1\"/p")
 cat >/dev/null
-set -f; set -- $x
+set -f
+# shellcheck disable=SC2086 # split $x into its two fields on purpose; set -f stops globbing
+set -- $x
 (umask 077; printf '{"t":%s,"ev":"%s"%s%s}\n' "$(date +%s)" "$ev" "${1:-}" "${2:-}" >> "$f") 2>/dev/null
 exit 0
