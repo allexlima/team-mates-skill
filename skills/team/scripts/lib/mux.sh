@@ -24,7 +24,6 @@ _mux() {
 }
 
 _mux_none() {
-  # shellcheck disable=SC2154 # sub is set by team.sh, which sources this lib
   echo "team.sh: '$sub' needs a terminal multiplexer. cmux is recommended (brew install --cask cmux, https://www.cmux.dev/; run /team from a cmux pane). tmux works as a fallback: run /team inside a tmux session. --inline needs neither." >&2
   exit 3
 }

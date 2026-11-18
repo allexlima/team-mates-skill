@@ -402,8 +402,8 @@ _reg_prune() {
 # lock whose holder pid is dead is broken, a live one is waited on for up to 30s, then exit 4.
 # Released on exit via an EXIT trap, which replaces any earlier EXIT trap: call once per process.
 _lock() {
-  local lock="$1.lock" holder
-  for _ in $(seq 1 300); do
+  local lock="$1.lock" i holder
+  for i in $(seq 1 300); do
     if mkdir "$lock" 2>/dev/null; then echo $$ > "$lock/pid"; trap 'rm -rf "'"$lock"'"' EXIT; return 0; fi
     holder=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$lock"; continue; fi

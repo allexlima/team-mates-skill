@@ -1053,9 +1053,7 @@ sub_monitor() {
   # syncs the sidebar, and exits when `close` removes the registry (no orphan
   # process). TEAM_LEAD_PANE is baked in for the "in the lead's pane" note.
   local team_q; team_q=$(printf '%q' "$team")
-  local script_q
-  # shellcheck disable=SC2154 # here is set by team.sh, which sources this lib
-  script_q=$(printf '%q' "$here/team.sh")
+  local script_q; script_q=$(printf '%q' "$here/team.sh")
   local cmd="TEAM_MUX=$be TEAM_LEAD_PANE=$lead_pane_q TEAM_STATUS_INTERVAL=$interval bash $script_q status --watch $team_q"
 
   local ref
@@ -1137,7 +1135,7 @@ _st_sync_apply() {
   # Phase, pill colour and log level move together (one palette with the pane)
   local phase pill_color level
   if [ "$total" -gt 0 ] && [ "$reported" -ge "$total" ]; then
-    phase="done"; pill_color=$_ST_C_DONE; level=success
+    phase=done; pill_color=$_ST_C_DONE; level=success
   elif [ "$needs" -gt 0 ]; then
     phase="needs you"; pill_color=$_ST_C_ALERT; level=warning
   elif [ "$reported" -gt 0 ] || [ -n "$started" ]; then
