@@ -1,4 +1,4 @@
-# CLAUDE.md — contributor guardrails for the /team skill
+# CLAUDE.md — contributor guardrails for Team-mates (the /team skill)
 
 This repo is one skill (`skills/team/SKILL.md`), one orchestration script
 (`skills/team/scripts/team.sh` + `scripts/lib/`), and

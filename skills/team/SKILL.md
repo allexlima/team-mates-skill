@@ -4,7 +4,7 @@ description: Runs a team of Claude Code agents, one interactive session per role
 argument-hint: "<task> [--roles N] [--rounds N] [--model <alias|id>] [--autoroles] [--tabs] [--tmux] [--no-gate] [--no-caveman] [--autoclose] [--inline] [--no-monitor] [--help]"
 ---
 
-# /team — agent team emulation
+# Team-mates — /team agent teams
 
 **Mission.** Run like a small startup tech team: dig into the task with the user until its scope is clear, staff the roles it actually needs, and finish it accurately and fast. The speed comes from keeping every teammate busy while work is pending, having each one split its own work across subagents, and pre-approving routine commands so few of them stop on a permission prompt (the allowlist is in `--help`).
 

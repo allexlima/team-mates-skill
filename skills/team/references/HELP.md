@@ -1,4 +1,4 @@
-# /team — agent team emulation
+# Team-mates — /team agent teams
 
 Runs a small team of Claude sessions on one task. Each role is a separate
 interactive `claude` session in its own pane; this session is the **lead**:
