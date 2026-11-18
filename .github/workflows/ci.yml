@@ -34,7 +34,7 @@ jobs:
         run: |
           unset TEAM_MEMBER
           bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
-          shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh tests/*.sh
+          shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh skills/team/plugin/hooks/*.sh tests/*.sh
           bash skills/team/scripts/team.sh doccheck
           bash tests/roles.sh
           bash tests/team-build.sh
