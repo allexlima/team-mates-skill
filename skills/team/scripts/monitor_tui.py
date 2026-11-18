@@ -381,8 +381,9 @@ class Transcript:
     Usage blocks repeat once per content block of a message, so input/cache tokens are
     counted once per message id and output tokens take the largest value seen."""
 
-    def __init__(self, session_id, root=None):
+    def __init__(self, session_id, root=None, model_hint=""):
         self.sid = session_id
+        self.hint = model_hint   # registry model id: transcripts drop its `[1m]` suffix
         self.root = root or os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
         self.path, self.off, self.buf, self._next_look = None, 0, "", 0.0
         self.msgs = {}           # message id -> [input+cache tokens, output tokens]
@@ -455,7 +456,8 @@ class Transcript:
 
     def stats(self, now):
         window = int(os.environ.get("TEAM_CONTEXT_WINDOW") or 0) or \
-            (1_000_000 if "1m" in self.model.lower() else 200_000)
+            (1_000_000 if "[1m]" in (self.hint + self.model).lower() or self.ctx > 200_000
+             else 200_000)
         oldest = min(self.pending.values(), key=lambda p: p[2] or now, default=None)
         return {"tokens": sum(i + o for i, o in self.msgs.values()),
                 "output": sum(o for _, o in self.msgs.values()),
@@ -496,7 +498,7 @@ class LiveSource:
             sid = m.get("session_id")
             if not sid:
                 continue
-            tx = self.tx.setdefault(sid, Transcript(sid))
+            tx = self.tx.setdefault(sid, Transcript(sid, model_hint=m.get("model") or ""))
             st = tx.poll(now)
             if st:
                 out[m["title"]] = st
@@ -792,6 +794,11 @@ def selftest():
     check("T2: tokens deduped per message (1010+50, 3025+7)", st["tokens"] == 1010 + 50 + 3025 + 7, st["tokens"])
     check("T3: context = newest input incl. cache (3025)", st["ctx"] == 3025, st["ctx"])
     check("T4: finished tool cleared, open one pending", st["pending"]["name"] == "Read" and st["pending"]["brief"] == "c.py", st)
+    tx3 = Transcript(sid, root=root, model_hint="system.ai.claude-x[1m]")
+    tx3.ctx = 400_000
+    check("C1: [1m] registry hint selects the 1M window (400k -> 40%)", tx3.stats(now)["ctx_pct"] == 40, tx3.stats(now))
+    tx3.hint, tx3.ctx = "", 400_000
+    check("C2: context over 200k implies the 1M window", tx3.stats(now)["ctx_pct"] == 40, tx3.stats(now))
     check("S1: short_model", short_model("claude-sonnet-4-6") == "sonnet 4.6" and short_model("opus") == "opus")
     return 0 if ok else 1
 
@@ -928,7 +935,7 @@ if HAVE_TEXTUAL:
             rows.append(Text(f" ! {error}", style=f"bold {PAL['warn']}"))
         return Group(*rows)
 
-    def render_card(m, view, width, tick):
+    def render_card(m, view, width, tick, compact=False):
         tx = (view.tx or {}).get(m["title"]) or {}
         glyph, word, color = state_bits(m, tick)
         width = max(10, width)
@@ -959,6 +966,8 @@ if HAVE_TEXTUAL:
             l3 = Text.assemble(Text("╌" * barw, style=PAL["dim"]), tail)
         else:
             l3 = Text.assemble(gbar(pct, barw, c0=_mix(color, PAL["accent"], .5), c1=color), tail)
+        if compact:   # short terminal: state line + bar only, so every teammate stays visible
+            return Group(top, l3)
         meta = Text()
         if tx.get("ctx_pct") is not None:
             meta.append(f" ctx {tx['ctx_pct']}%", style=PAL["warn"] if tx["ctx_pct"] >= 80 else PAL["dim"])
@@ -1015,6 +1024,7 @@ if HAVE_TEXTUAL:
 
         def set_data(self, m, view, key, tick):
             self.mate, self.view, self.key, self.tick = m, view, key, tick
+            self.styles.height = 4 if getattr(self.app, "compact", False) else 7
             role = STATES.get(m["state"], ("", "", "dim"))[2]
             for c in ("active", "alert", "done", "dim"):
                 self.set_class(role == c, c)
@@ -1026,7 +1036,7 @@ if HAVE_TEXTUAL:
         def render(self):
             if not self.mate:
                 return ""
-            return render_card(self.mate, self.view, self.size.width, self.tick)
+            return render_card(self.mate, self.view, self.size.width, self.tick, getattr(self.app, "compact", False))
 
         def on_click(self, event):
             if self.has_focus or getattr(event, "chain", 1) >= 2:
@@ -1182,7 +1192,7 @@ if HAVE_TEXTUAL:
         def __init__(self, source, hist, interval, autoclose=True, grace=4):
             super().__init__()
             self.source, self.hist, self.interval = source, hist, interval
-            self.view, self.tick, self.cols = None, 0, 3
+            self.view, self.tick, self.cols, self.compact = None, 0, 3, False
             self.autoclose, self.grace = autoclose, grace
             self._saw_unfinished, self._closing_at, self._order = False, None, []
             self._alerted, self._seen_first = set(), False
@@ -1400,6 +1410,12 @@ if HAVE_TEXTUAL:
 
         def _relayout(self, w, h):
             self.cols = max(1, min(4, (w - 2) // 40))
+            compact = h < 30
+            if compact != getattr(self, "compact", None):
+                self.compact = compact
+                for c in self._cards():
+                    c.styles.height = 4 if compact else 7
+                    c.refresh()
             try:
                 self.query_one("#cards", Vertical).styles.grid_size_columns = self.cols
                 self.query_one("#bottom", Horizontal).set_class(w < 100, "narrow")

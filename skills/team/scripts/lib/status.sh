@@ -139,18 +139,23 @@ _st_state() {
 # Detection only (decision 7): gathers the facts and asks _st_state for the token;
 # _st_frame does all layout. Reads module globals: _ST_UUID_MAP, _ST_NOTIF_DATA
 # ---------------------------------------------------------------------------
+# _st_model_gone <m>: _model_gone's answer from the picker read once per refresh into
+# _ST_MODELS (one python start per refresh, not two per teammate).
+_ST_MODELS=
+_st_model_gone() {
+  case ${1:-} in ''|-|opus|sonnet|haiku) return 1 ;; esac
+  local _a _id
+  while IFS=$'\t' read -r _a _id _; do [ "$_id" = "$1" ] && return 1; done <<<"$_ST_MODELS"
+  return 0
+}
+
 _st_row() {
   local row="$1" run="$2" leadpane="$3" team="$4"
 
   local backend ref lay title mdl submdl rundir marker
-  backend=$(awk '{print $1}' <<<"$row")
-  ref=$(awk '{print $2}' <<<"$row")
-  lay=$(awk '{print $3}' <<<"$row")
-  title=$(awk '{print $4}' <<<"$row")
-  mdl=$(awk '{print $5}' <<<"$row")
-  submdl=$(awk 'NF>=6{print $6}' <<<"$row")
-  rundir=$(awk 'NF>=7{print $7}' <<<"$row")
-  marker=$(awk 'NF>=9{print $9}' <<<"$row")
+  # One read, not eight awk forks: this runs per teammate on every refresh.
+  local _c8 _rest
+  read -r backend ref lay title mdl submdl rundir _c8 marker _rest <<<"$row" || true
 
   # Strip exact team prefix to handle team slugs with hyphens
   local role="${title#"$team"-}"
@@ -242,7 +247,7 @@ _st_row() {
   local m
   for m in "$mdl" "$submdl"; do
     [ -z "$m" ] || [ "$m" = "-" ] && continue
-    _model_gone "$m" 2>/dev/null && { gone=1; break; }
+    _st_model_gone "$m" && { gone=1; break; }
   done
 
   # tmux rows: liveness only. tmux has no hook feed, so no waiting/idle; stalled? still
@@ -254,12 +259,24 @@ _st_row() {
   if [ -z "$fin" ] && [ "$backend" = cmux ] && command -v cmux >/dev/null; then
     # DEAD only on _alive's definite answer (not_found / null pane_ref). _alive keeps
     # the row on any cmux error, so a _pane_of failure after it is an error too: UNKNOWN.
-    alive=0
-    if _alive cmux "$ref" 2>/dev/null; then
-      alive=
-      local pp; pp=$(_pane_of "$ref" 2>/dev/null || echo gone)
-      if [ "$pp" != gone ]; then
-        alive=1
+    # One `cmux identify` answers both questions (the surface exists; which pane holds it).
+    # DEAD on not_found or a null pane_ref; any other error leaves the state UNKNOWN.
+    local idout idrc=0 pp=
+    idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
+    if [ "$idrc" != 0 ]; then
+      case $idout in *not_found*) alive=0 ;; esac
+    else
+      # caller object only (a null caller means the surface is gone); no python start per row
+      local _c=${idout#*\"caller\"}
+      case $_c in
+        [[:space:]]:[[:space:]]\{*|*:[[:space:]]\{*) _c=${_c%%\}*}
+          [[ $_c =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]} || pp=gone ;;
+        *null*) pp=gone ;;
+      esac
+      case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
+    fi
+    if [ "$alive" = 1 ]; then
+      if :; then
         # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
         if [ -n "$leadpane" ] && [ "$pp" = "$leadpane" ]; then
           parked=1
@@ -275,20 +292,23 @@ _st_row() {
         #     blocked on one surfaces only as STALLED after 10 min of silence.
         local skip_waiting=
         case "${mdl:-}" in *haiku*|*glm*|*kimi*) skip_waiting=1 ;; esac
-        if [ -z "$skip_waiting" ] && declare -f _model_tier >/dev/null 2>&1; then
-          local tier; tier=$(_model_tier "${mdl:-}" 2>/dev/null || true)
+        if [ -z "$skip_waiting" ]; then
+          local _a _id tier=
+          while IFS=$'\t' read -r _a _id tier; do [ "$_id" = "${mdl:-}" ] && break; tier=; done <<<"$_ST_MODELS"
           [ "$tier" = haiku ] && skip_waiting=1
         fi
         if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
-          local uuid
-          uuid=$(awk -F'=' -v r="$ref" '$1==r {print $2; exit}' <<<"$_ST_UUID_MAP" 2>/dev/null || true)
+          # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
+          local uuid= um nl
+          um=$'\n'"$_ST_UUID_MAP"
+          case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
           if [ -n "$uuid" ]; then
             local notif_line notif_title notif_subtitle
-            notif_line=$(awk -F'|' -v u="$uuid" '$1==u {print; exit}' \
-                         <<<"$_ST_NOTIF_DATA" 2>/dev/null || true)
+            nl=$'\n'"$_ST_NOTIF_DATA"
+            case $nl in *$'\n'"$uuid|"*) notif_line=${nl#*$'\n'"$uuid|"}; notif_line=${notif_line%%$'\n'*} ;; *) notif_line= ;; esac
             if [ -n "$notif_line" ]; then
-              notif_title=$(awk -F'|' '{print $2}' <<<"$notif_line")
-              notif_subtitle=$(awk -F'|' '{print $3}' <<<"$notif_line")
+              notif_title=${notif_line%%|*}
+              notif_subtitle=${notif_line#*|}
               if [ -z "$skip_waiting" ]; then
                 printf '%s\n' "$notif_title" | grep -qi 'claude question' && waiting=1
               fi
@@ -394,6 +414,8 @@ except Exception:
     pass
 " 2>/dev/null || true)
   fi
+
+  _ST_MODELS=$(_team_models 2>/dev/null || true)
 
   # Deduplicate by title (last row wins, first-appearance order, dash excluded)
   local deduped
