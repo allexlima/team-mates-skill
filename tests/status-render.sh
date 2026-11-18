@@ -272,6 +272,14 @@ got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tW
 got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tWORKING\tinvestigating\tidle chat\t1\t-\t-\t3')")
 [ "$(cut -f9 <<<"$got")" = 1 ] && pass "M17b: an unclaimed ready any task stays unassigned" || fail "M17b: unclaimed" "got=[$got]"
 
+got=$(summary_team tm2 "$(printf -- '- [ ] T3 any: z\n')" "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tT3: starting\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-a ] && pass "M17c: the live claimant of a ready any task is its ready holder" \
+  || fail "M17c: claimant not listed" "got=[$got]"
+got=$(summary_team tm2 "$(printf -- '- [ ] T1 tm2-a: x\n')" \
+  "$(printf 'a\ttm2-a\tIDLE\tinvestigating\tx\t1\t-\t-\t3')" "$(printf 'b\ttm2-b\tWORKING\tinvestigating\tT1: taking it\t1\t-\t-\t3')")
+[ "$(cut -f11 <<<"$got")" = tm2-b ] && pass "M17d: a task claimed by another teammate is no longer the line owner's" \
+  || fail "M17d: line owner still listed" "got=[$got]"
+
 # M18: team tm does not take team tm-x's lines (a sibling run dir names tm-x)
 d=$(mktemp -d "$W/pre.XXXX"); mkdir -p "$d/2026-11-18-tm/reports" "$d/2026-11-18-tm-x"
 printf -- '- [ ] T1 tm-a: x\n- [ ] T2 tm-x-a: y\n' > "$d/2026-11-18-tm/tasks.md"
@@ -285,7 +293,7 @@ cat > "$W/gnu/stat" <<'SH'
 #!/bin/sh
 case $1 in
   -f) echo "  File: \"$3\""; echo "    ID: 0 Namelen: 255 Type: ext2/ext3"; exit 1 ;;
-  -c) /usr/bin/stat -f %m "$3" ;;
+  -c) /usr/bin/stat -c %Y "$3" 2>/dev/null || /usr/bin/stat -f %m "$3" ;;
 esac
 SH
 chmod +x "$W/gnu/stat"

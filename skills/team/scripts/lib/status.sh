@@ -479,11 +479,12 @@ eta = elapsed * (100 - pct) // pct if 5 <= pct < 100 and elapsed > 0 else -1
 live = {t for t, r in recs.items() if r['state'] != 'FINISHED'}
 pending = [t for t in tasks if not t[2]]
 # a task a live teammate names in its status prefix ("T3: ...") is taken, whoever owns the line
-claimed = {m.group(1) for t, r in recs.items() if t in live and r['ms'] != 'reported'
+claimed = {m.group(1): t for t, r in recs.items() if t in live and r['ms'] != 'reported'
            for m in [re.match(r'\s*(T\d+):', r['step'])] if m}
-unassigned = sum(1 for t in pending if all(d in done_ids for d in t[3]) and t[0] not in claimed
-                 and (t[1] == 'any' or t[1] not in live))
-ready_owners = sorted({t[1] for t in pending if t[1] in live and all(d in done_ids for d in t[3])})
+holders = [claimed.get(t[0]) or (t[1] if t[1] in live else None)
+           for t in pending if all(d in done_ids for d in t[3])]
+unassigned = holders.count(None)
+ready_owners = sorted({h for h in holders if h})
 prs = set()
 for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
     try:
