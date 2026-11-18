@@ -26,7 +26,7 @@ ln -s ~/team-mates-skill/skills/team ~/.claude/skills/team
 Update with `git -C ~/team-mates-skill pull`.
 </details>
 
-**Requirements:** [Claude Code](https://code.claude.com), `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither. Runs that edit code also use `git` and `gh`, plus [no-mistakes](https://github.com/kunchenguid/no-mistakes) if you have it.
+**Requirements:** [Claude Code](https://code.claude.com), `git`, `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither pane tool. Optional: superpowers (brainstorming), humanizer, beautify-github-readme, diagram-design, caveman, the Chrome DevTools MCP with Google Chrome stable, and the no-mistakes CLI. Each is used when installed and skipped when not; `/team --help` lists what a run loses without each.
 
 ## Try it
 
