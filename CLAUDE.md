@@ -41,27 +41,46 @@ table are relative to `skills/team/` (`HELP.md`, `teammate-rules.md` and
    `~/.claude/skills/team/…` or `<abs skill dir>/…` path that is not in the skill.
    Fix what it reports.
 
-Deterministic checks belong in a hook, not prose. `.githooks/pre-commit` runs
-`doccheck`; enable it with `git config core.hooksPath .githooks`. Where a global
-`core.hooksPath` is already set (e.g. a Databricks secret-scanning hook —
-`git config --get core.hooksPath`), don't override it: run `bash skills/team/scripts/team.sh doccheck`
-in CI or as a manual pre-push check so you keep the global hook.
+CI runs `doccheck` on every push and PR, so there is no local hook to enable.
+
+## Branch workflow
+
+`main` is stable and released; `dev` is the integration branch. The
+maintainer sets branch protection on both (GitHub settings, not in this repo):
+PR required, green CI required, no force-push or deletion, enforced for
+admins, 0 approvals.
+
+1. Branch from `dev` as `feat/…`, `fix/…`, `docs/…`, `ci/…` or `chore/…`.
+2. Commit as `git-practices.md` says, one logical change each.
+3. Run the full gate set below locally with `TEAM_MEMBER` unset.
+4. Open a PR into `dev` through the no-mistakes gate
+   (`no-mistakes axi run --base-branch dev`). Wait for the CI checks
+   `gate (macos-latest)` and `gate (ubuntu-latest)`; never merge on red.
+5. Release: PR `dev` → `main`, then an annotated `vX.Y.Z` tag on `main` and a
+   GitHub Release. Move `CHANGELOG.md`'s `[Unreleased]` entries under the new
+   version in the PR that releases it.
+
+CI (`.github/workflows/ci.yml`) runs the gate set below on macOS and Ubuntu,
+except `facts-lint`: it reads the git-ignored `.team/facts.md`, so it is local-only. Change the list here and in the workflow in the same commit.
 
 ## The full gate set
 
 `doccheck` is the doc guard only. Before merging a branch, run every suite
-from the main checkout with `TEAM_MEMBER` unset (an inherited value makes
+with `TEAM_MEMBER` unset (an inherited value makes
 `rev4-3` fail for the wrong reason):
 
 ```
 bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
 bash skills/team/scripts/team.sh doccheck
+shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh tests/*.sh
 bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
+bash tests/plugin-events.sh   # once the file is on dev; CI skips a missing suite
+bash tests/monitor-tui.sh     # once the file is on dev; needs Textual for full coverage
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 

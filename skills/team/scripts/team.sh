@@ -104,10 +104,12 @@
 # --worktree. With no [model], the tier is that of the default model the teammate starts on
 # (ANTHROPIC_MODEL, else "model" in managed-settings, else ~/.claude/settings.json), so a haiku-tier
 # default gets the same treatment. Every other tier uses TEAM_PERMISSION_MODE (default auto) plus the
-# _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP).
+# _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP; Edit
+# scoped to the worktree and run-dir files on a build run). Every teammate gets _team_deny (git commit
+# hook skipping) as --disallowedTools.
 # Spawned tabs/panes are recorded in $TEAM_REG_DIR/team-<team>.tabs (default: the private dir
-# ${TMPDIR:-/tmp}/team-<uid>, created 0700 and refused unless it is a real directory you own with mode
-# 700; tests point TEAM_REG_DIR at a scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
+# ${TMPDIR:-/tmp}/team-<uid>, /tmp when TMPDIR is relative; either dir is created 0700 and refused unless
+# it is a real directory you own with mode 700; tests point TEAM_REG_DIR at a scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
 # "cmux <ref> <layout:pane|tab|dash> <title> <model|-> <subagent-model|-> <run-dir|-> <project-root>
 #  <state:live|finished> <session-id|-> <cwd>". <state> is `finished` once `finish` closed the teammate on
 # purpose: such a row is kept by prune and reap (only `close`, which ends the team, drops it), holds no cap
@@ -121,7 +123,9 @@ set -euo pipefail
 # any npm script) is left off, as are pushes, gh writes, installs, deploys and rm: those go through
 # the TL (or the lead). Under auto mode that is a convention, not a block: an unlisted command can
 # still run if auto mode allows it.
-_team_allow="Read,Glob,Grep,Edit,Write,Agent,SendMessage,ListAgents"
+# Edit (which also covers Write and NotebookEdit) is added at spawn: on a build run it is scoped to
+# the worktree and the teammate's run-dir files, otherwise it is bare Edit,Write.
+_team_allow="Read,Glob,Grep,Agent,SendMessage,ListAgents"
 _team_allow+=",Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*)"
 _team_allow+=",Bash(git commit:*)"
 _team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*)"
@@ -129,6 +133,12 @@ _team_allow+=",Bash(bash -n:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(mak
 _team_allow+=",Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
 _team_allow+=",Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/scripts/team.sh status:*)"
 _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
+# Denied for every teammate (deny beats allow, so `Bash(git commit:*)` above cannot approve these):
+# git commit's hook-skipping flag, long form (and its unambiguous prefixes) and -n. A rule matches the
+# command text, so a combined short flag such as -an is not caught. Live-probed (CLI 2.1.306): no deny
+# rule, not even Bash(git *), matches a git command that starts with a global option, so
+# `git -C <dir> commit --no-verify` and `git -c core.hooksPath=… commit` get through; that needs a hook.
+_team_deny="Bash(git commit *--no-veri*),Bash(git commit -n*),Bash(git commit * -n*)"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
 subs="init lead-title reap gate-init clean close finish models pick-model role roles role-pull role-promote status monitor sync facts-lint doccheck show list spawn"
@@ -156,14 +166,45 @@ _secret_lines() { sed -E 's/(^|[^A-Za-z0-9._%+-])git@/\1git /g' | grep -nEi -- "
 # pipeline fail, and it falls back to $PWD.
 _root() { git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p' || pwd; }
 _roles_lib() { echo "${TEAM_ROLES_DIR:-$HOME/.claude/team/roles}"; }
+# The caveman style's SKILL.md, from wherever the agent can have it: project skills, user skills,
+# ~/.agents (npx skills), then any installed plugin's skills/caveman (or caveman-mode). Exit 1 if none.
+_caveman_file() {
+  local f
+  for f in "$(_root)/.claude/skills/caveman/SKILL.md" "$HOME/.claude/skills/caveman/SKILL.md" \
+      "$HOME/.agents/skills/caveman/SKILL.md"; do
+    [ -f "$f" ] && { printf '%s\n' "$f"; return 0; }
+  done
+  python3 - "$HOME/.claude/plugins/installed_plugins.json" <<'PY'
+import json, os, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        plugins = json.load(fh).get("plugins") or {}
+except Exception:
+    sys.exit(1)
+for entries in plugins.values():
+    for e in entries or []:
+        ip = e.get("installPath") if isinstance(e, dict) else None
+        for name in ("caveman", "caveman-mode"):
+            f = os.path.join(ip or "", "skills", name, "SKILL.md")
+            if ip and os.path.isfile(f):
+                print(f); sys.exit(0)
+sys.exit(1)
+PY
+}
 # The registry dir holds every per-team state file (.tabs registry, .round and .sync sidecars, system
 # prompts, launchers) and trusts what it reads there, so by default it is a private per-user dir, not
 # bare /tmp: any local user could pre-create or symlink a name in a shared dir. TEAM_REG_DIR overrides
-# it (tests; the caller then owns its safety). Refuses unless the dir is a real directory we own, 0700.
+# it (tests) and gets the same checks. Refuses unless the dir is a real directory we own, 0700.
+# Relative paths would follow each caller's cwd: TEAM_REG_DIR is made absolute, a relative TMPDIR is ignored.
 _reg_dir() {
-  if [ -n "${TEAM_REG_DIR:-}" ]; then printf '%s\n' "$TEAM_REG_DIR"; return 0; fi
   local t=${TMPDIR:-/tmp} d m
+  case $t in /*) ;; *) t=/tmp ;; esac
   d="${t%/}/team-$EUID"
+  if [ -n "${TEAM_REG_DIR:-}" ]; then
+    d=$TEAM_REG_DIR; case $d in /*) ;; *) d="$PWD/$d" ;; esac
+    # "link/" or "link/." would pass [ -L ]: strip trailing "/" and "/." first
+    while [ "$d" != / ]; do case $d in */) d=${d%/} ;; */.) d=${d%/.} ;; *) break ;; esac; done
+  fi
   mkdir -m 700 "$d" 2>/dev/null || true
   m=$(stat -c %a "$d" 2>/dev/null || stat -f %Lp "$d" 2>/dev/null) || m=
   if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ] || [ "$m" != 700 ]; then
@@ -185,14 +226,18 @@ _need_py() {
 # changes without notice, so it is read at run time instead of hardcoded. Emits
 # "<label>TAB<id>TAB<tier>", best tier first. `behavesAs` is the capability tier a
 # model is gated at, which is what decides whether it fits a role.
+# Claude Code's managed-settings.json for this OS (Windows is not supported by team.sh).
+case $(uname -s) in
+  Darwin) export TEAM_MANAGED_SETTINGS="/Library/Application Support/ClaudeCode/managed-settings.json" ;;
+  *) export TEAM_MANAGED_SETTINGS=/etc/claude-code/managed-settings.json ;;
+esac
 _team_models() {
   _need_py
   python3 - <<'PY'
 import json, os, re
 options = None
 paths = ([os.environ["TEAM_MODELS_FILE"]] if os.environ.get("TEAM_MODELS_FILE") else
-         ["/Library/Application Support/ClaudeCode/managed-settings.json",
-          os.path.expanduser("~/.claude/settings.json")])
+         [os.environ["TEAM_MANAGED_SETTINGS"], os.path.expanduser("~/.claude/settings.json")])
 for path in paths:
     try:
         with open(path, encoding="utf-8") as fh:
@@ -373,8 +418,7 @@ _default_model() {
   python3 - <<'PY'
 import json, os
 paths = ([os.environ["TEAM_MODELS_FILE"]] if os.environ.get("TEAM_MODELS_FILE") else
-         ["/Library/Application Support/ClaudeCode/managed-settings.json",
-          os.path.expanduser("~/.claude/settings.json")])
+         [os.environ["TEAM_MANAGED_SETTINGS"], os.path.expanduser("~/.claude/settings.json")])
 for path in paths:
     try:
         with open(path, encoding="utf-8") as fh:
@@ -683,7 +727,7 @@ if [ "$sub" = doccheck ]; then
     grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
   done
   # Every skill-relative path the docs and allowlists name must exist (files moved once already).
-  for rel in $(grep -rhoE '(~/\.claude/skills/team|<abs skill dir>)/[A-Za-z0-9_./-]+' "$here/.." | sed -E 's#^~/\.claude/skills/team/##; s#^<abs skill dir>/##' | sort -u); do
+  for rel in $(grep -rhoE '(~/\.claude/skills/team|<abs skill dir>)/[A-Za-z0-9_./-]+' "$here/.." | sed -E 's#^~/\.claude/skills/team/##; s#^<abs skill dir>/##; s#\.+$##' | sort -u); do
     [ -e "$here/../$rel" ] || { echo "doccheck: a doc names $rel, which is not in the skill" >&2; rc=1; }
   done
   # npx skills stops discovery at a root SKILL.md, so the repo root must not hold one.
@@ -998,6 +1042,10 @@ elif [ -n "$worktree" ]; then
     fi
   fi
   echo "worktree $dir (branch $branch)"
+  # Build-run teammates gate their branch with `no-mistakes axi run`, which needs the gate remote.
+  if command -v no-mistakes >/dev/null 2>&1 && ! git -C "$root" remote get-url no-mistakes >/dev/null 2>&1; then
+    echo "warn: no-mistakes is installed but this repo has no gate; run \`team.sh gate-init\` so $title can gate its branch" >&2
+  fi
   # A worktree is its own git top-level, so it never inherits the repo's workspace
   # trust and `claude` would raise the trust prompt in every pane. Pre-accept this
   # one path. Best-effort: a failure here only means the prompt comes back.
@@ -1017,7 +1065,7 @@ with open(tmp, "w", encoding="utf-8") as f:
 os.replace(tmp, p)
 PY
 fi
-cavefile="$HOME/.agents/skills/caveman/SKILL.md"
+cavefile=$(_caveman_file) || cavefile=
 rulesfile="$here/../references/teammate-rules.md"
 # claude keeps only the LAST --append-system-prompt-file, so these are concatenated
 # rather than passed as two flags: the always-on teammate rules (parallelise with
@@ -1047,8 +1095,31 @@ else
   sid=$(python3 -c 'import uuid; print(uuid.uuid4())')
   cmd="cd $(printf %q "$dir") && $envs claude --session-id $sid --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
 fi
+if [ "$tier" != haiku ]; then
+  # A build run (worktree, also when resumed) edits only its worktree and its run-dir files. Edit rules
+  # are checked against both the path asked for and the file it resolves to, so each path is listed
+  # as given, physical, and via the lead's cwd (e.g. ~/Projects -> ~/Documents/Projects). `//` = absolute.
+  case $dir in
+    */.team/worktrees/*)
+      wtp=$(cd "$dir" && pwd -P) wtl="$PWD/.team/worktrees/${dir##*/}"
+      [ "$(cd "$wtl" 2>/dev/null && pwd -P)" = "$wtp" ] || wtl=$dir
+      for p in "$dir" "$wtp" "$wtl"; do
+        case ",$allow," in *",Edit(/$p/**),"*) ;; *) allow+=",Edit(/$p/**)" ;; esac
+      done
+      if [ "$rundir" != - ]; then
+        for p in "$rundir" "$(cd "$rundir" && pwd -P)"; do
+          for f in "reports/$role.md" tasks.md "status/$role.txt"; do
+            case ",$allow," in *",Edit(/$p/$f),"*) ;; *) allow+=",Edit(/$p/$f)" ;; esac
+          done
+        done
+      fi ;;
+    *) allow+=",Edit,Write" ;;
+  esac
+fi
 # One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
-[ -n "$allow" ] && cmd+=" --allowedTools $(printf %q "$allow")"
+# `=` form: both flags are variadic, so a spaced value would also swallow the prompt when it comes next.
+[ -n "$allow" ] && cmd+=" --allowedTools=$(printf %q "$allow")"
+cmd+=" --disallowedTools=$(printf %q "$_team_deny")"
 if [ -z "$resume" ] && [ -s "$sysprompt" ]; then cmd+=" --append-system-prompt-file $(printf %q "$sysprompt")"; fi
 [ -n "$model" ] && cmd+=" --model $(printf %q "$model")"
 cmd+=" \"\$(cat $(printf %q "$pfile"))\""

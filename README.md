@@ -26,7 +26,7 @@ ln -s ~/team-mates-skill/skills/team ~/.claude/skills/team
 Update with `git -C ~/team-mates-skill pull`.
 </details>
 
-**Requirements:** [Claude Code](https://code.claude.com), `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither. Runs that edit code also use `git` and `gh`, plus [no-mistakes](https://github.com/kunchenguid/no-mistakes) if you have it.
+**Requirements:** [Claude Code](https://code.claude.com), `git`, `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither pane tool. Optional: superpowers (brainstorming), humanizer, beautify-github-readme, diagram-design, caveman, the Chrome DevTools MCP with Google Chrome stable, the [no-mistakes](https://github.com/kunchenguid/no-mistakes) CLI, and `gh` for build runs that open PRs. Each is used when installed and skipped when not; [`/team --help`](skills/team/references/HELP.md#optional-dependencies) lists what a run loses without each.
 
 ## Try it
 
@@ -74,7 +74,7 @@ It stores conclusions and pointers only, never secrets or raw data.
 
 ## Contributing
 
-Only `skills/team/` ships. The lead's procedure is in [SKILL.md](skills/team/SKILL.md), the rules every teammate gets are in [teammate-rules.md](skills/team/references/teammate-rules.md), and commit and PR rules are in [git-practices.md](skills/team/references/git-practices.md). `tests/`, `CLAUDE.md` and `.githooks/` stay in the repo for development. Read [CLAUDE.md](CLAUDE.md) before changing anything: each fact has one owner file, and it lists the test suites to run before a merge.
+Only `skills/team/` ships. The lead's procedure is in [SKILL.md](skills/team/SKILL.md), the rules every teammate gets are in [teammate-rules.md](skills/team/references/teammate-rules.md), and commit and PR rules are in [git-practices.md](skills/team/references/git-practices.md). `tests/`, `CLAUDE.md` and `.github/` stay in the repo for development. Read [CLAUDE.md](CLAUDE.md) before changing anything: it holds the branch workflow (branch from `dev`, PR into `dev`, CI must be green), the one-owner-per-fact rule and the test suites to run before a merge.
 
 ## License
 

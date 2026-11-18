@@ -57,7 +57,7 @@ cheapest tier that still fits it: the top tier for the adversarial role and for
 architecture / security / subtle debugging, the middle tier for ordinary work,
 and the cheap tier only for mechanical sweeps. `team.sh pick-model <tier>` returns
 the best model id for that tier on this machine (newest version within the `claude-*`
-family; GLM / Kimi only by explicit full id). If no model of the requested tier is
+family; GLM / Kimi only by explicit full id). The set comes from `managed-settings.json` (macOS `/Library/Application Support/ClaudeCode/`, Linux/WSL `/etc/claude-code/`), then `~/.claude/settings.json`; `TEAM_MODELS_FILE` replaces both. Windows is not supported and `managed-settings.d/` drop-ins are not read. If no model of the requested tier is
 available it falls back through the chain (opus → sonnet → haiku) and exits 1, so the
 lead can see a lower tier was used; exit 3 means no model is available at any tier. Cheap-tier (haiku) teammates — and any model id that resolves to haiku tier (e.g. GLM /
 Kimi) — always run unattended in `dontAsk` mode with a per-teammate allowlist:
@@ -173,7 +173,7 @@ inside that teammate. A report's notification is best-effort quiet (no macOS ban
 NEEDS INPUT keeps the banner; cmux says its notification hooks "can still override" that,
 so treat it as a preference. A report's ring is not a durable signal either, because the
 reporting teammate's pane closes once it is finished — rely on the pill's `N/M reported`.
-The lead calls `team.sh sync <team>` to update the sidebar; `team.sh sync --clear <team>`
+The monitor updates the sidebar every tick; with `--no-monitor` the lead calls `team.sh sync <team>` instead; `team.sh sync --clear <team>`
 removes it when the team closes. The status pane (see below) opens by default and is the
 detailed view; the sidebar is the glance view.
 
@@ -185,6 +185,15 @@ check before closing. Registries without a project root are left alone and count
 in a summary line. You can also run `team.sh reap` at any time to see the list, or
 `team.sh reap --yes` to close without prompting. `--exclude <team>` skips the named
 team. Needs cmux or tmux; skipped under --inline.
+
+The registry and its sidecar files live in a private per-user dir, `${TMPDIR:-/tmp}/team-<uid>`
+(0700, owned by you, never a symlink), so where it is depends on `TMPDIR`: a lead started with a
+different `TMPDIR` does not see the other lead's teams. A relative `TMPDIR` is ignored (`/tmp`
+is used). `TEAM_REG_DIR` overrides the dir and gets the same checks; a relative value is made
+absolute. Registries an older version left in `/tmp/team-*.tabs` are not migrated or read:
+close such a team with the old copy of the skill, or move its files into the new dir by hand.
+A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 with
+"refusing registry dir"; a missing `TEAM_REG_DIR` is created 0700 if its parent exists (a nested missing path is refused).
 
 ## Examples
     /team review PR #42 for security, performance and test coverage
@@ -231,8 +240,10 @@ team. Needs cmux or tmux; skipped under --inline.
     working      Doing its work (a note says "report on disk" once it has reported)
     idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
                  so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
-                 Exception: while a ready task has no owner it is pinned as
-                 "idle with work pending" — hand it that task.
+                 Exception: it is pinned as "idle with work pending" while an unassigned
+                 ready task exists (owner `any` or not live), or while the idle teammate holds
+                 a ready task, on its own line or claimed by starting its status line with
+                 "T<n>:". Hand it that task. A claimed task counts as assigned, not unassigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
   Live teammates' state comes from the cmux hooks the claude shim injects — no screen
@@ -251,6 +262,8 @@ team. Needs cmux or tmux; skipped under --inline.
   completed run does not leave a pane behind (`TEAM_MONITOR_AUTOCLOSE=0` keeps it open,
   `TEAM_MONITOR_CLOSE_GRACE` sets the delay). It only closes on that *transition*: opening
   the monitor on an already-finished run leaves it up.
+  Only task lines owned by `<team>-*` or `any` count, so another team's lines in a shared
+  tasks.md are ignored (a sibling team whose slug extends this one is not counted either).
   The headline % is **overall task progress**: done tasks in tasks.md, plus each open task's
   share as its owner reports it on its status line (`T3: drafting · 40%` credits T3; with no
   `T<n>:` prefix it credits the teammate's first open task). A `~` in front means
@@ -272,18 +285,43 @@ team. Needs cmux or tmux; skipped under --inline.
 Consensus (findings that survived challenge, with evidence) · Disputed (each
 side's best evidence) · Dropped (refuted) · Next steps.
 
+## Optional dependencies
+Everything below is used when installed and skipped when not. A run never fails for a missing
+one; it loses only what the table says. `caveman` and `no-mistakes` are used every time they are
+available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
+
+| Dependency | Used for | Without it |
+|---|---|---|
+| `superpowers:brainstorming` skill | The lead's step-1 brainstorm | The lead asks the same questions (outcome, audience, success) with AskUserQuestion directly |
+| `humanizer:humanizer` skill | Smoothing user-facing prose (synthesis, PR text, docs) | Prose ships as drafted; read it for stock AI phrasing yourself |
+| `beautify-github-readme` skill | README redesign | The README is written plainly, with no generated hero or section art |
+| `diagram-design` skill | Diagrams | Use a Mermaid or ASCII diagram |
+| `caveman` skill (found in `<project>/.claude/skills`, `~/.claude/skills`, `~/.agents/skills`, then any installed plugin's `skills/caveman` or `skills/caveman-mode`) | Terse teammate output, saves tokens | Teammates write normal prose, as with `--no-caveman` |
+| Chrome DevTools MCP + Google Chrome stable | UI QA by teammates | The report says "UI checks not done: no browser tools"; UI claims stay unverified |
+| `no-mistakes` CLI | The build-run gate that pushes and opens each PR; a `--worktree` spawn warns when it is installed but the repo has no gate (run `team.sh gate-init`) | No gate, as with `--no-gate`: commits stay local; the lead or TL pushes and opens the PRs by hand |
+
 ## Notes
 - Non-haiku teammates start in auto permission mode (set TEAM_PERMISSION_MODE to override)
   with this pre-approved allowlist, so routine local work doesn't stop on a prompt (the
-  `_team_allow` list in team.sh): Read, Glob, Grep, Edit, Write, Agent, SendMessage,
-  ListAgents; Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
+  `_team_allow` list in team.sh): Read, Glob, Grep, Agent, SendMessage,
+  ListAgents, and Edit/Write (on a build run, scoped to the teammate's own worktree plus its
+  report, status file and `tasks.md`; on other runs, any path); Bash for `git status/diff/log/show/add/commit`, `ls`, `cat`, `head`, `tail`,
   `wc`, `grep`, `rg`, `bash -n`, `pytest`, `python3 -m pytest`, `make test`, `npm test`,
   `ruff`, `cmux notify`, `no-mistakes axi`, and team.sh `facts-lint`/`status`; and the Chrome
-  DevTools MCP tools. A rule approves every flag of its command, so commands with a
+  DevTools MCP tools (UI QA needs Google Chrome stable and the MCP enabled; see the
+  Chrome rule in `teammate-rules.md`). A rule approves every flag of its command, so commands with a
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run.
+  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted
+  paths go to the auto classifier. One partial block: `git commit --no-verify` (and `-n`) is denied for every teammate
+  through `--disallowedTools`, since it skips the secret-scanning hooks. The deny
+  rules miss a git command that starts with a global option
+  (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
+  (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
+  `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
+  also fails safe the other way: a commit whose inline `-m` message names the flag is refused,
+  so write such a message to a file and use `git commit -F <file>`.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
