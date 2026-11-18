@@ -18,7 +18,7 @@ fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
 # ── PATH stubs — never open real panes, sessions, or terminals ──
 mkdir -p "$W/bin"
 CMUX_LOG="$W/cmux.log"; CLAUDE_LOG="$W/claude.log"
-_reset_logs() { : > "$CMUX_LOG" > "$CLAUDE_LOG"; }
+_reset_logs() { : > "$CMUX_LOG"; : > "$CLAUDE_LOG"; }
 _reset_logs
 
 # cmux stub: configurable via env vars — never replace this file in tests; set env vars instead:
@@ -110,7 +110,7 @@ export CMUX_SURFACE_ID="surface:lead"
 # Redirect registries and sysprompts to a scratch dir so tests never touch /tmp/team-*.tabs
 # from other live projects (cont2, tw1, w2c, etc.).
 export TEAM_REG_DIR="$W/regs"
-mkdir -p "$TEAM_REG_DIR"
+mkdir -m 700 "$TEAM_REG_DIR"
 
 # ── Git helpers ──
 _git() { git -c user.email=t@t -c user.name=T "$@"; }
@@ -244,7 +244,7 @@ _mkrun() {
     || fail "T8/T9: launcher carries --model and the prompt" "line=${line:0:300}"
   # T12: exclusive create. The launcher is a fresh 0600 file with a unique name; the old name's
   # symlink is untouched and its target never written.
-  lpath=${typed#bash }; lmode=$(stat -f %Lp "$lpath" 2>/dev/null || stat -c %a "$lpath" 2>/dev/null)
+  lpath=${typed#bash }; lmode=$(stat -c %a "$lpath" 2>/dev/null || stat -f %Lp "$lpath" 2>/dev/null)
   [ "$lmode" = 600 ] && [ ! -L "$lpath" ] && pass "T12: launcher is created 0600 (not a symlink)" \
     || fail "T12: launcher is created 0600" "mode=$lmode path=$lpath"
   [ "$(cat "$W/t12-victim")" = SENTINEL ] && [ "$lpath" != "$TEAM_REG_DIR/team-$TM-longrole.launch.sh" ] \
@@ -252,7 +252,7 @@ _mkrun() {
     || fail "T12: a symlink at the old predictable launcher name is not followed" "victim=$(cat "$W/t12-victim") path=$lpath"
   # T12: the system prompt file feeds --append-system-prompt-file. A symlink at its predictable name
   # is replaced, not written through; the result is a regular 0600 file holding the rules.
-  sp="$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"; spmode=$(stat -f %Lp "$sp" 2>/dev/null || stat -c %a "$sp" 2>/dev/null)
+  sp="$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"; spmode=$(stat -c %a "$sp" 2>/dev/null || stat -f %Lp "$sp" 2>/dev/null)
   [ "$(cat "$W/t12-victim2")" = SENTINEL2 ] && [ ! -L "$sp" ] && [ "$spmode" = 600 ] && grep -q '^# Teammate working rules' "$sp" \
     && pass "T12: sysprompt replaces a symlink at its name (0600, target untouched)" \
     || fail "T12: sysprompt replaces a symlink at its name" "victim=$(head -c 40 "$W/t12-victim2") link=$([ -L "$sp" ] && echo yes || echo no) mode=$spmode"
@@ -1102,7 +1102,7 @@ surface:13	$TM2-worker"
 # perm-1/perm-2 - non-haiku teammates get a broad local allowlist; haiku tier is unchanged
 # ══════════════════════════════════════════════════════════════════
 _allow_of() {  # the --allowedTools value in the last logged spawn command, shell quoting undone
-  grep -oE -- '--allowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--allowedTools //; s/\\//g' || true
+  grep -oE -- '--allowedTools=([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--allowedTools=//; s/\\//g' || true
 }
 {
   R="$W/perm"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm"; _mkrun "$RUNP"
@@ -1132,6 +1132,87 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
     || fail "perm-2: haiku allowlist" "got=$a want=$want"
 }
 
+# perm-3: on a build run (--worktree) Edit is scoped to the worktree and the teammate's run-dir files
+# (logical and physical paths: a rule is checked against both the path asked for and the file it
+# resolves to), and every spawn denies git commit's hook-skipping flags.
+# cave-1..4: the caveman style is found wherever the agent can have it (user skills, ~/.agents,
+# an installed plugin), and --no-caveman still leaves it out.
+{
+  H="$W/home"; [ "$HOME" = "$H" ] || { echo "cave tests need the scratch HOME" >&2; exit 1; }   # never a real ~/.claude
+  R="$W/cave"; _mkgit "$R"; pf="$R/p.md"; printf 'prompt\n' > "$pf"; TM="cave$$"
+  sp="$TEAM_REG_DIR/team-$TM-c.sysprompt.md"
+  _cave_spawn() { _reset_logs; (cd "$R" && bash "$TEAM_SH" spawn "$@" "$TM" c "$pf" sonnet) >/dev/null 2>&1 || true; rm -f "$TEAM_REG_DIR/team-$TM.tabs"; }
+  mkdir -p "$H/.claude/skills/caveman"; printf 'CAVE-USER\n' > "$H/.claude/skills/caveman/SKILL.md"
+  _cave_spawn; grep -q CAVE-USER "$sp" 2>/dev/null && pass "cave-1: caveman found in ~/.claude/skills" \
+    || fail "cave-1: caveman in ~/.claude/skills" "$(head -c 200 "$sp" 2>/dev/null)"
+  _cave_spawn --no-caveman; ! grep -q CAVE-USER "$sp" 2>/dev/null && pass "cave-2: --no-caveman leaves it out" \
+    || fail "cave-2: --no-caveman"
+  rm -rf "$H/.claude/skills/caveman"
+  mkdir -p "$H/.agents/skills/caveman"; printf 'CAVE-AGENTS\n' > "$H/.agents/skills/caveman/SKILL.md"
+  _cave_spawn; grep -q CAVE-AGENTS "$sp" 2>/dev/null && pass "cave-3: caveman found in ~/.agents/skills" \
+    || fail "cave-3: caveman in ~/.agents/skills"
+  rm -rf "$H/.agents/skills/caveman"
+  ip="$H/.claude/plugins/cache/mkt/caveman/1.0"; mkdir -p "$ip/skills/caveman" "$H/.claude/plugins"
+  printf 'CAVE-PLUGIN\n' > "$ip/skills/caveman/SKILL.md"
+  printf '{"version":2,"plugins":{"caveman@mkt":[{"scope":"user","installPath":"%s"}]}}\n' "$ip" > "$H/.claude/plugins/installed_plugins.json"
+  _cave_spawn; grep -q CAVE-PLUGIN "$sp" 2>/dev/null && pass "cave-4: caveman found in an installed plugin" \
+    || fail "cave-4: caveman in an installed plugin"
+  rm -rf "$H/.claude/plugins"
+}
+
+# gate-1: a --worktree spawn warns when no-mistakes is installed but this repo has no gate remote.
+{
+  R="$W/gate"; _mkgit "$R"; pf="$R/p.md"; printf 'prompt\n' > "$pf"; TM="gate$$"
+  mkdir -p "$W/nmbin"; printf '#!/bin/sh\nexit 0\n' > "$W/nmbin/no-mistakes"; chmod +x "$W/nmbin/no-mistakes"
+  _reset_logs
+  out=$(cd "$R" && PATH="$W/nmbin:$PATH" bash "$TEAM_SH" spawn --worktree "$TM" g "$pf" sonnet 2>&1) || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  _git -C "$R" remote add no-mistakes "$R" 2>/dev/null
+  _reset_logs
+  out2=$(cd "$R" && PATH="$W/nmbin:$PATH" bash "$TEAM_SH" spawn --replace --worktree "$TM" g "$pf" sonnet 2>&1) || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [[ $out == *"gate-init"* ]] && [[ $out2 != *"gate-init"* ]] \
+    && pass "gate-1: --worktree spawn warns when the no-mistakes gate is not set up" \
+    || fail "gate-1: missing-gate warning" "out=${out:0:200} out2=${out2:0:200}"
+}
+
+_disallow_of() {
+  grep -oE -- '--disallowedTools=([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--disallowedTools=//; s/\\//g' || true
+}
+{
+  R="$W/perm3"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm3"; _mkrun "$RUNP"
+  pf="$RUNP/prompts/b.md"; printf 'prompt\n' > "$pf"
+  TM="permw$$"; _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn --worktree "$TM" b "$pf" sonnet) >/dev/null 2>&1 || true
+  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss= bad=
+  for p in "$wt" "$(cd "$wt" 2>/dev/null && pwd -P)"; do
+    case ",$a," in *",Edit(/$p/**),"*) ;; *) miss+=" Edit(/$p/**)" ;; esac
+  done
+  for p in "$RUNP" "$(cd "$RUNP" && pwd -P)"; do
+    for e in "Edit(/$p/reports/b.md)" "Edit(/$p/tasks.md)" "Edit(/$p/status/b.txt)"; do
+      case ",$a," in *",$e,"*) ;; *) miss+=" $e" ;; esac
+    done
+  done
+  case ",$a," in *,Edit,*|*,Write,*) bad+=" bare-Edit/Write" ;; esac
+  for e in 'Bash(git commit *--no-veri*)' 'Bash(git commit -n*)' 'Bash(git commit * -n*)'; do
+    case ",$d," in *",$e,"*) ;; *) miss+=" deny:$e" ;; esac
+  done
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [ -n "$a" ] && [ -z "$miss" ] && [ -z "$bad" ] \
+    && pass "perm-3: build-run Edit scoped to worktree + run files; hook-skip commit denied" \
+    || fail "perm-3: scoped Edit + hook-skip deny" "missing:$miss bad:$bad allow=$a deny=$d"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" s "$pf" sonnet) >/dev/null 2>&1 || true
+  d=$(_disallow_of); rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [[ $d == *'Bash(git commit *--no-veri*)'* ]] && pass "perm-4: non-build spawn also denies hook-skipping commits" \
+    || fail "perm-4: non-build deny" "deny=$d"
+  # Both tool-list flags are variadic: a spaced value would swallow the prompt that follows it
+  # (e.g. on --resume with no model), so they must use the --flag=value form.
+  grep -qE -- '--(dis)?allowedTools ' "$CMUX_LOG" \
+    && fail "perm-5: tool-list flags use --flag=value" "$(grep -oE -- '--(dis)?allowedTools [^ ]{0,40}' "$CMUX_LOG" | head -2)" \
+    || pass "perm-5: tool-list flags use --flag=value"
+}
+
 # ══════════════════════════════════════════════════════════════════
 # doccheck passes after all changes
 # ══════════════════════════════════════════════════════════════════
@@ -1150,6 +1231,12 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   out=$(bash "$D/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
   [ "$rc" = 1 ] && [[ $out == *"gone.md"* ]] && pass "doccheck: refuses a doc path that is not in the skill" \
     || fail "doccheck: refuses a doc path that is not in the skill" "rc=$rc out=${out:0:200}"
+  # A sentence-ending '.' after a real path is punctuation, not part of the path.
+  D2="$W/dcdot"; mkdir -p "$D2/skills"; cp -R "$(cd "$(dirname "$TEAM_SH")/.." && pwd)" "$D2/skills/team"
+  printf '\nRun ~/.claude/skills/team/scripts/team.sh.\n' >> "$D2/skills/team/SKILL.md"
+  out=$(bash "$D2/skills/team/scripts/team.sh" doccheck 2>&1) && rc=0 || rc=$?
+  [ "$rc" = 0 ] && pass "doccheck: a trailing '.' after a path is punctuation" \
+    || fail "doccheck: a trailing '.' after a path is punctuation" "rc=$rc out=${out:0:200}"
 }
 
 # ══════════════════════════════════════════════════════════════════
