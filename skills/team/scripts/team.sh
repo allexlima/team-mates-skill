@@ -20,7 +20,8 @@
 #                            Rows of other projects are never shown or touched; live rows with no root (legacy) are only counted, never named or closed.
 #                            exit 1 if one could not be closed
 #   team.sh gate-init     -> sets up the no-mistakes gate for this repo (needs an "origin" remote)
-#   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept)
+#   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept),
+#                            and its scratch dirs and system prompts in the registry dir (a live teammate's kept)
 #   team.sh finish <team> <role> -> after the lead received a teammate's report: mark its row finished (session id
 #                                  and cwd kept), then close its pane. exit 2 refused, nothing changed: the report did
 #                                  not grow since spawn or gained no new PARALLELISM: line, tasks.md lacks
@@ -416,7 +417,7 @@ _lock() {
 _mates() { [ -f "$1" ] || return 0; awk '($3=="pane" || $3=="tab") && $9!="finished" {print $4}' "$1" | sort -u; }
 
 # Every subcommand that reads or writes the registry dir checks it first.
-case $sub in reap|close|finish|show|list|status|monitor|sync|spawn) _reg_dir_init ;; esac
+case $sub in reap|close|finish|show|list|status|monitor|sync|spawn|clean) _reg_dir_init ;; esac
 
 # Libraries: functions only (sub_<name> per subcommand), sourced after the helpers they use,
 # so a missing lib only disables its own subcommands.
@@ -574,6 +575,16 @@ if [ "$sub" = clean ]; then
     [ -d "$wt" ] || continue
     if git -C "$root" worktree remove "$wt" 2>/dev/null; then echo "removed $wt"
     else echo "kept $wt (uncommitted changes)"; fi
+  done
+  # Per-teammate scratch dirs and system prompts in the registry dir go too, except a live teammate's.
+  # Every registry is checked: team slugs can prefix each other (foo, foo-bar).
+  for s in "$(_reg_dir)/team-$team-"*.scratch "$(_reg_dir)/team-$team-"*.sysprompt.md; do
+    [ -e "$s" ] && [ ! -L "$s" ] || continue
+    t=${s##*/team-}; t=${t%.scratch}; t=${t%.sysprompt.md}
+    if cat "$(_reg_dir)"/team-*.tabs 2>/dev/null | awk -v t="$t" '$4==t && $9!="finished"{f=1} END{exit !f}'; then
+      echo "kept $s ($t is live)"; continue
+    fi
+    rm -rf -- "$s" && echo "removed $s"
   done
   exit 0
 fi

@@ -1189,6 +1189,25 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   (cd "$R" && bash "$TEAM_SH" spawn "t28d$$" worker "$pf3" sonnet) >/dev/null 2>&1 || true
   rm -f "$TEAM_REG_DIR/team-t28d$$.tabs"
   grep -q -- '--plugin-dir' "$CMUX_LOG" && fail "T28b: no run dir, no plugin" || pass "T28b: no run dir, no plugin"
+
+  # clean removes the team's scratch dirs and system prompts, except a live teammate's;
+  # a symlink planted under that name is never followed.
+  T="cl$$"; D="$TEAM_REG_DIR"
+  mkdir -p "$D/team-$T-gone.scratch/sub" "$D/team-$T-live.scratch" "$W/cl-victim"
+  touch "$D/team-$T-gone.sysprompt.md" "$D/team-$T-live.sysprompt.md" "$W/cl-victim/keep"
+  ln -s "$W/cl-victim" "$D/team-$T-link.scratch"
+  printf 'cmux surface:9 pane %s - - - %s live 00000000-0000-0000-0000-000000000000 %s\n' "$T-live" "$R" "$R" > "$D/team-$T.tabs"
+  printf 'cmux surface:8 pane %s - - - %s finished - %s\n' "$T-gone" "$R" "$R" >> "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-gone.scratch" ] && [ ! -e "$D/team-$T-gone.sysprompt.md" ] \
+    && pass "T28b: clean removes a finished teammate's scratch and sysprompt" \
+    || fail "T28b: clean removes a finished teammate's scratch and sysprompt" "$(ls "$D" | grep "$T")"
+  [ -d "$D/team-$T-live.scratch" ] && [ -f "$D/team-$T-live.sysprompt.md" ] \
+    && pass "T28b: clean keeps a live teammate's scratch and sysprompt" \
+    || fail "T28b: clean keeps a live teammate's scratch and sysprompt"
+  [ -f "$W/cl-victim/keep" ] && pass "T28b: clean does not follow a symlinked scratch" \
+    || fail "T28b: clean does not follow a symlinked scratch"
+  rm -rf "$D/team-$T"*
 }
 
 # ══════════════════════════════════════════════════════════════════
