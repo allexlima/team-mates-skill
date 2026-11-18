@@ -231,6 +231,7 @@ _mkrun() {
   TM="t8$$"
   # T12: a symlink at the old predictable launcher name must not be followed.
   printf 'SENTINEL\n' > "$W/t12-victim"; ln -s "$W/t12-victim" "$TEAM_REG_DIR/team-$TM-longrole.launch.sh"
+  printf 'SENTINEL2\n' > "$W/t12-victim2"; ln -s "$W/t12-victim2" "$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"
   _reset_logs
   (cd "$R" && bash "$TEAM_SH" spawn "$TM" longrole "$pf" sonnet) >/dev/null 2>&1 && sprc=0 || sprc=$?
   line=$(grep -E '^new-split|^new-surface' "$CMUX_LOG" | tail -1)
@@ -249,6 +250,12 @@ _mkrun() {
   [ "$(cat "$W/t12-victim")" = SENTINEL ] && [ "$lpath" != "$TEAM_REG_DIR/team-$TM-longrole.launch.sh" ] \
     && pass "T12: a symlink at the old predictable launcher name is not followed" \
     || fail "T12: a symlink at the old predictable launcher name is not followed" "victim=$(cat "$W/t12-victim") path=$lpath"
+  # T12: the system prompt file feeds --append-system-prompt-file. A symlink at its predictable name
+  # is replaced, not written through; the result is a regular 0600 file holding the rules.
+  sp="$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"; spmode=$(stat -f %Lp "$sp" 2>/dev/null || stat -c %a "$sp" 2>/dev/null)
+  [ "$(cat "$W/t12-victim2")" = SENTINEL2 ] && [ ! -L "$sp" ] && [ "$spmode" = 600 ] && grep -q '^# Teammate working rules' "$sp" \
+    && pass "T12: sysprompt replaces a symlink at its name (0600, target untouched)" \
+    || fail "T12: sysprompt replaces a symlink at its name" "victim=$(head -c 40 "$W/t12-victim2") link=$([ -L "$sp" ] && echo yes || echo no) mode=$spmode"
   # T12: nothing else removes the launcher, so it deletes itself first, and the claude line after
   # the rm must still run (the stub claude logs its argv).
   _reset_logs

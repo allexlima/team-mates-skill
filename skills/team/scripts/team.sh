@@ -997,9 +997,17 @@ rulesfile="$here/../references/teammate-rules.md"
 # rather than passed as two flags: the always-on teammate rules (parallelise with
 # subagents, verify what they return) plus the caveman style unless --no-caveman.
 sysprompt="$(_reg_dir)/team-$team-$role.sysprompt.md"
-: > "$sysprompt"
-if [ -f "$rulesfile" ]; then cat "$rulesfile" >> "$sysprompt"; fi
-if [ -n "$caveman" ] && [ -f "$cavefile" ]; then printf '\n\n' >> "$sysprompt"; cat "$cavefile" >> "$sysprompt"; fi
+# The name stays fixed because `status` reads this file's mtime as the round's start. The registry dir
+# defaults to world-writable /tmp, so write to an exclusive 0600 mktemp file and rename it into place:
+# rename(2) never follows a symlink at the destination and, in a sticky dir, refuses to replace
+# another user's file (a plain > would write through a pre-made file or symlink and feed its
+# content to claude as the system prompt).
+sptmp=$(mktemp "$(_reg_dir)/team-$team-$role.sysprompt.XXXXXX") \
+  || { echo "team.sh: cannot create a file in $(_reg_dir)" >&2; exit 3; }
+if [ -f "$rulesfile" ]; then cat "$rulesfile" >> "$sptmp"; fi
+if [ -n "$caveman" ] && [ -f "$cavefile" ]; then printf '\n\n' >> "$sptmp"; cat "$cavefile" >> "$sptmp"; fi
+python3 -c 'import os,sys; os.replace(sys.argv[1], sys.argv[2])' "$sptmp" "$sysprompt" \
+  || { rm -f "$sptmp"; echo "team.sh: refused: cannot replace $sysprompt (is it another user's file?)" >&2; exit 2; }
 envs="CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4 TEAM_MEMBER=$(printf %q "$title")"
 [ "$submodel" != - ] && envs+=" CLAUDE_CODE_SUBAGENT_MODEL=$(printf %q "$submodel")"
 # Our own session id, recorded in the registry, so a later round can `claude --resume` it. A resumed
