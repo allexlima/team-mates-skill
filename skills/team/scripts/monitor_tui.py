@@ -193,11 +193,10 @@ class History:
             if tid in tasks and not tasks[tid]["done"] and tid not in self.task_start and started:
                 # Attached mid-task: `elapsed_min` counts from the teammate's spawn, so it is this
                 # task's age only for a teammate on its first task. Otherwise the start is unknown.
-                first = not any(t["done"] and t["owner"] == title for t in tasks.values())
+                first = on_first_task(tasks.values(), title)
                 start = now if self._attached else (now - (m.get("elapsed_min") or 0) * 60 if first else None)
-                if start is not None:
-                    self.task_start[tid] = start
-                    self._write({"k": "start", "t": start, "task": tid})
+                self.task_start[tid] = start
+                self._write({"k": "start", "t": start, "task": tid})
             s = self.samples.setdefault(title, deque(maxlen=720))
             if pct is not None and tid and (not s or (s[-1][1], s[-1][2]) != (tid, pct)):
                 s.append((now, tid, pct))
@@ -244,6 +243,12 @@ class History:
         return out
 
 
+def on_first_task(tasks, title):
+    """True when `title`'s spawn age is its current task's age: it has finished no task.
+    An `any` task does not say who finished it, so any done `any` task makes it unknown."""
+    return not any(t["done"] and t["owner"] in (title, "any") for t in tasks)
+
+
 # ── forecast: list-scheduling the backlog over the live teammates ─────────────────────
 def forecast(doc, hist, now):
     """Estimate when the backlog is done, with a range.
@@ -287,7 +292,7 @@ def forecast(doc, hist, now):
         start = hist.task_start.get(tid) if hist else None
         unknown = False
         if start is None:
-            if any(t["done"] and t["owner"] == m["title"] for t in tasks.values()):
+            if (hist and tid in hist.task_start) or not on_first_task(tasks.values(), m["title"]):
                 unknown, start = True, now   # spawn time says nothing about this task's age
             else:
                 start = now - (m.get("elapsed_min") or 0) * 60
@@ -786,6 +791,22 @@ def selftest():
     h.observe({"tasks": [mk("T2", "t-b")], "teammates": [mate("t-b", "T2", 10)]}, now)
     h.observe({"tasks": [mk("T2", "t-b", True)], "teammates": [mate("t-b", "T2", 100)]}, now + 300)
     check("H2b: first-task teammate keeps the spawn-based start", h.durations() == [300 + 600], h.durations())
+    # H4: an unknown start stays unknown on later ticks, so the ETA keeps the typical path
+    h = History()
+    d = {"tasks": [mk("T1", "t-a", True), mk("T2", "t-a")], "teammates": [mate("t-a", "T2", 50, el=60)],
+         "summary": {"done": 1, "elapsed_min": 60}}
+    h.observe(d, now)
+    h.observe(d, now + 5)
+    fc = forecast(d, h, now + 5)
+    check("H4: second tick keeps T2's start unknown", h.task_start.get("T2", 0) is None, h.task_start)
+    check("H4b: ETA still from the typical duration (~30 min), not ~seconds",
+          fc["eta"] is not None and abs(fc["eta"] - 1800) < 60, fc)
+    h.observe({"tasks": [mk("T1", "t-a", True), mk("T2", "t-a", True)], "teammates": [mate("t-a", "T2", 100)]}, now + 300)
+    check("H4c: T2 finishing records no truncated duration", h.durations() == [], h.durations())
+    # H5: a done `any` task may be this teammate's, so its spawn age is not the task age
+    h = History()
+    h.observe({"tasks": [mk("T1", "any", True), mk("T2", "t-a")], "teammates": [mate("t-a", "T2", 10)]}, now)
+    check("H5: after a done `any` task the start is unknown", h.task_start.get("T2", 0) is None, h.task_start)
     # H3: recent rate
     h = History()
     for i, p in enumerate((10, 20, 30)):
