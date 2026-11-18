@@ -1118,8 +1118,9 @@ if [ "$tier" != haiku ]; then
   esac
 fi
 # One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
-[ -n "$allow" ] && cmd+=" --allowedTools $(printf %q "$allow")"
-cmd+=" --disallowedTools $(printf %q "$_team_deny")"
+# `=` form: both flags are variadic, so a spaced value would also swallow the prompt when it comes next.
+[ -n "$allow" ] && cmd+=" --allowedTools=$(printf %q "$allow")"
+cmd+=" --disallowedTools=$(printf %q "$_team_deny")"
 if [ -z "$resume" ] && [ -s "$sysprompt" ]; then cmd+=" --append-system-prompt-file $(printf %q "$sysprompt")"; fi
 [ -n "$model" ] && cmd+=" --model $(printf %q "$model")"
 cmd+=" \"\$(cat $(printf %q "$pfile"))\""

@@ -1102,7 +1102,7 @@ surface:13	$TM2-worker"
 # perm-1/perm-2 - non-haiku teammates get a broad local allowlist; haiku tier is unchanged
 # ══════════════════════════════════════════════════════════════════
 _allow_of() {  # the --allowedTools value in the last logged spawn command, shell quoting undone
-  grep -oE -- '--allowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--allowedTools //; s/\\//g' || true
+  grep -oE -- '--allowedTools=([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--allowedTools=//; s/\\//g' || true
 }
 {
   R="$W/perm"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm"; _mkrun "$RUNP"
@@ -1177,7 +1177,7 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
 }
 
 _disallow_of() {
-  grep -oE -- '--disallowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--disallowedTools //; s/\\//g' || true
+  grep -oE -- '--disallowedTools=([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--disallowedTools=//; s/\\//g' || true
 }
 {
   R="$W/perm3"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm3"; _mkrun "$RUNP"
@@ -1206,6 +1206,11 @@ _disallow_of() {
   d=$(_disallow_of); rm -f "$TEAM_REG_DIR/team-$TM.tabs"
   [[ $d == *'Bash(git commit *--no-veri*)'* ]] && pass "perm-4: non-build spawn also denies hook-skipping commits" \
     || fail "perm-4: non-build deny" "deny=$d"
+  # Both tool-list flags are variadic: a spaced value would swallow the prompt that follows it
+  # (e.g. on --resume with no model), so they must use the --flag=value form.
+  grep -qE -- '--(dis)?allowedTools ' "$CMUX_LOG" \
+    && fail "perm-5: tool-list flags use --flag=value" "$(grep -oE -- '--(dis)?allowedTools [^ ]{0,40}' "$CMUX_LOG" | head -2)" \
+    || pass "perm-5: tool-list flags use --flag=value"
 }
 
 # ══════════════════════════════════════════════════════════════════
