@@ -1,6 +1,6 @@
 ---
 name: team
-description: Emulate Claude Code agent teams — one interactive claude session per role in its own cmux pane or tab, a shared task file, cross-session messaging for challenge rounds, and a git-ignored .team/ folder with reusable roles, run records, and a verified-facts ledger. Use when the user runs /team or asks for a "team", "debate", or multiple agents that challenge each other's findings.
+description: Runs a team of Claude Code agents, one interactive session per role in its own cmux or tmux pane or tab, that share a task file, message each other in challenge rounds, and keep reusable roles, run records and a verified-facts ledger in a git-ignored .team/ folder. Use when the user runs /team or asks for a "team", a "debate", or multiple agents that challenge each other's findings.
 argument-hint: "<task> [--roles N] [--rounds N] [--model <alias|id>] [--autoroles] [--tabs] [--tmux] [--no-gate] [--no-caveman] [--autoclose] [--inline] [--no-monitor] [--help]"
 ---
 
