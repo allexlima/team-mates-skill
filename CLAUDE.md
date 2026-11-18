@@ -77,6 +77,7 @@ bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
+bash tests/prompt.sh          # team.sh prompt: template rendering, build/gate blocks, exit codes
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 

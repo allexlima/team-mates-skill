@@ -38,3 +38,4 @@ jobs:
           bash tests/status-render.sh
           bash tests/team-finish.sh
           bash tests/tmux.sh
+          bash tests/prompt.sh
