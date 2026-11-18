@@ -267,55 +267,51 @@ _st_row() {
       case $idout in *not_found*) alive=0 ;; esac
     else
       # caller object only (a null caller means the surface is gone); no python start per row
-      local _c=${idout#*\"caller\"}
-      case $_c in
-        [[:space:]]:[[:space:]]\{*|*:[[:space:]]\{*) _c=${_c%%\}*}
-          [[ $_c =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]} || pp=gone ;;
-        *null*) pp=gone ;;
-      esac
+      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(null|\{[^}]*\}) ]]; then
+        pp=gone
+        [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+      fi
       case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
     fi
     if [ "$alive" = 1 ]; then
-      if :; then
-        # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
-        if [ -n "$leadpane" ] && [ "$pp" = "$leadpane" ]; then
-          parked=1
-        fi
+      # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
+      if [ -n "$leadpane" ] && [ "$pp" = "$leadpane" ]; then
+        parked=1
+      fi
 
-        # WAITING / IDLE: derive from newest cmux notification for this surface.
-        # Skip WAITING for haiku/dontAsk tier (no human approval needed).
-        # Probed by rev4-tests (CLI 2.1.294):
-        #   AskUserQuestion  → title="Claude question", subtitle=""
-        #   Completion/Stop  → title="Claude Code",     subtitle="Completed in <session>"
-        #   PermissionRequest → NOT in list-notifications (uses cmux hooks feed).
-        #     Permission prompts cannot be detected via notifications; a teammate
-        #     blocked on one surfaces only as STALLED after 10 min of silence.
-        local skip_waiting=
-        case "${mdl:-}" in *haiku*|*glm*|*kimi*) skip_waiting=1 ;; esac
-        if [ -z "$skip_waiting" ]; then
-          local _a _id tier=
-          while IFS=$'\t' read -r _a _id tier; do [ "$_id" = "${mdl:-}" ] && break; tier=; done <<<"$_ST_MODELS"
-          [ "$tier" = haiku ] && skip_waiting=1
-        fi
-        if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
-          # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
-          local uuid= um nl
-          um=$'\n'"$_ST_UUID_MAP"
-          case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
-          if [ -n "$uuid" ]; then
-            local notif_line notif_title notif_subtitle
-            nl=$'\n'"$_ST_NOTIF_DATA"
-            case $nl in *$'\n'"$uuid|"*) notif_line=${nl#*$'\n'"$uuid|"}; notif_line=${notif_line%%$'\n'*} ;; *) notif_line= ;; esac
-            if [ -n "$notif_line" ]; then
-              notif_title=${notif_line%%|*}
-              notif_subtitle=${notif_line#*|}
-              if [ -z "$skip_waiting" ]; then
-                printf '%s\n' "$notif_title" | grep -qi 'claude question' && waiting=1
-              fi
-              # Session completed its last turn but report not yet on disk
-              if [ "$ms" != reported ]; then
-                printf '%s\n' "$notif_subtitle" | grep -qi '^completed in ' && idle=1
-              fi
+      # WAITING / IDLE: derive from newest cmux notification for this surface.
+      # Skip WAITING for haiku/dontAsk tier (no human approval needed).
+      # Probed by rev4-tests (CLI 2.1.294):
+      #   AskUserQuestion  → title="Claude question", subtitle=""
+      #   Completion/Stop  → title="Claude Code",     subtitle="Completed in <session>"
+      #   PermissionRequest → NOT in list-notifications (uses cmux hooks feed).
+      #     Permission prompts cannot be detected via notifications; a teammate
+      #     blocked on one surfaces only as STALLED after 10 min of silence.
+      local skip_waiting=
+      case "${mdl:-}" in *haiku*|*glm*|*kimi*) skip_waiting=1 ;; esac
+      if [ -z "$skip_waiting" ]; then
+        local _a _id tier=
+        while IFS=$'\t' read -r _a _id tier; do [ "$_id" = "${mdl:-}" ] && break; tier=; done <<<"$_ST_MODELS"
+        [ "$tier" = haiku ] && skip_waiting=1
+      fi
+      if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
+        # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
+        local uuid= um nl
+        um=$'\n'"$_ST_UUID_MAP"
+        case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
+        if [ -n "$uuid" ]; then
+          local notif_line notif_title notif_subtitle
+          nl=$'\n'"$_ST_NOTIF_DATA"
+          case $nl in *$'\n'"$uuid|"*) notif_line=${nl#*$'\n'"$uuid|"}; notif_line=${notif_line%%$'\n'*} ;; *) notif_line= ;; esac
+          if [ -n "$notif_line" ]; then
+            notif_title=${notif_line%%|*}
+            notif_subtitle=${notif_line#*|}
+            if [ -z "$skip_waiting" ]; then
+              printf '%s\n' "$notif_title" | grep -qi 'claude question' && waiting=1
+            fi
+            # Session completed its last turn but report not yet on disk
+            if [ "$ms" != reported ]; then
+              printf '%s\n' "$notif_subtitle" | grep -qi '^completed in ' && idle=1
             fi
           fi
         fi

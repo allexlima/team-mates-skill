@@ -689,7 +689,9 @@ def alerts_of(view):
     """Rows for NEEDS YOU: the four alert states, an idle teammate while a ready task has no
     owner, and (new) a stalled teammate whose transcript shows a tool call still in flight."""
     doc, out = view.doc, []
-    unassigned = (doc.get("summary") or {}).get("unassigned", 0)
+    summary = doc.get("summary") or {}
+    unassigned = summary.get("unassigned", 0)
+    ready_owners = set(summary.get("ready_owners") or ())
     for m in doc.get("teammates", []):
         st = m["state"]
         tx = (view.tx or {}).get(m["title"]) or {}
@@ -700,6 +702,8 @@ def alerts_of(view):
                 detail = (f"{pend['name']} running for {fmt_dur(view.now - pend['since'])}"
                           f" ({pend['brief'][:40]}): likely a permission prompt in its pane")
             out.append((m, st, detail))
+        elif st == "IDLE" and m["title"] in ready_owners:
+            out.append((m, "IDLE", "with work pending: it holds a ready task"))
         elif st == "IDLE" and unassigned > 0:
             out.append((m, "IDLE", f"with work pending: {unassigned} ready task"
                                    f"{' has' if unassigned == 1 else 's have'} no owner; hand it one"))
@@ -800,6 +804,11 @@ def selftest():
     tx3.hint, tx3.ctx = "", 400_000
     check("C2: context over 200k implies the 1M window", tx3.stats(now)["ctx_pct"] == 40, tx3.stats(now))
     check("S1: short_model", short_model("claude-sonnet-4-6") == "sonnet 4.6" and short_model("opus") == "opus")
+    idle = lambda: {"title": "t-a", "role": "a", "state": "IDLE"}
+    al = alerts_of(View(doc={"teammates": [idle()], "summary": {"unassigned": 0, "ready_owners": ["t-a"]}}, now=now))
+    check("A1: an idle teammate holding a ready task needs you", [r[1] for r in al] == ["IDLE"], al)
+    al = alerts_of(View(doc={"teammates": [idle()], "summary": {"unassigned": 0, "ready_owners": []}}, now=now))
+    check("A2: an idle teammate with no ready work does not", al == [], al)
     return 0 if ok else 1
 
 

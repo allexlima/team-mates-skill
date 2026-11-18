@@ -2,7 +2,7 @@
 # tests/monitor-tui.sh — the status --json contract and the TUI monitor (scripts/monitor_tui.py).
 # All headless: a stub cmux on PATH, a scratch TEAM_REG_DIR and HOME, a synthetic registry, run dir,
 # worktree and transcript. Nothing touches real panes.
-#   J*  status --json: the one document the TUI reads (joined registry fields, parsed tasks)
+#   J*  status --json: the one document the TUI reads (joined registry fields, parsed tasks, live state)
 #   U*  the summary's `unassigned` count, shared by the classic monitor and the TUI
 #   P*  monitor_tui.py: its stdlib layer (--selftest), and a Textual render when Textual is installed
 #   X*  all teammates finished: the TUI's exit 4 closes the pane (stub TUI, real pty)
@@ -89,6 +89,12 @@ PY
 )
 [ -z "$check" ] && pass "J1: status --json joins registry fields (session, cwd with spaces, branch) and parses tasks (scope, owns, needs, ready)" \
   || fail "J1: status --json contract" "$check"
+
+# ═══ J4 — a live surface (compact `cmux identify` JSON) is WORKING; a null pane_ref is DEAD ═══
+st=$(cd "$G" && CMUX_GONE_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev/null \
+  | python3 -I -c 'import json,sys; m={t["title"]: t["state"] for t in json.load(sys.stdin)["teammates"]}; print(m["j1-api"], m["j1-ui"])')
+[ "$st" = "WORKING DEAD" ] && pass "J4: compact identify JSON: live surface is WORKING, null pane_ref is DEAD" \
+  || fail "J4: cmux identify parse" "$st"
 
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
 frame=$(cd "$G" && TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)
