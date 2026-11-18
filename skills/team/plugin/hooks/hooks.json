@@ -1,5 +1,5 @@
 {
-  "description": "Record teammate state events for /team status (no tool input, no secrets).",
+  "description": "Record teammate state events for /team status (no tool input, no secrets) and fence teammate edits and hook-skipping git.",
   "hooks": {
     "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/event.sh\" SessionStart", "timeout": 5}]}],
     "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/event.sh\" UserPromptSubmit", "timeout": 5}]}],
