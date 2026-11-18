@@ -229,6 +229,8 @@ _mkrun() {
   seg=$(printf 'deep%.0s' {1..20}); R="$W/$seg/$seg/$seg/$seg"; _mkgit "$R"   # ~330-char dir, used twice in the command
   pf="$R/p.md"; printf 'go\n' > "$pf"
   TM="t8$$"
+  # T12: a symlink at the old predictable launcher name must not be followed.
+  printf 'SENTINEL\n' > "$W/t12-victim"; ln -s "$W/t12-victim" "$TEAM_REG_DIR/team-$TM-longrole.launch.sh"
   _reset_logs
   (cd "$R" && bash "$TEAM_SH" spawn "$TM" longrole "$pf" sonnet) >/dev/null 2>&1 && sprc=0 || sprc=$?
   line=$(grep -E '^new-split|^new-surface' "$CMUX_LOG" | tail -1)
@@ -239,6 +241,14 @@ _mkrun() {
   [[ $line == *" :: "*"--model sonnet"*'$(cat '*"p.md)"* ]] \
     && pass "T8/T9: launcher carries --model and the prompt" \
     || fail "T8/T9: launcher carries --model and the prompt" "line=${line:0:300}"
+  # T12: exclusive create. The launcher is a fresh 0600 file with a unique name; the old name's
+  # symlink is untouched and its target never written.
+  lpath=${typed#bash }; lmode=$(stat -f %Lp "$lpath" 2>/dev/null || stat -c %a "$lpath" 2>/dev/null)
+  [ "$lmode" = 600 ] && [ ! -L "$lpath" ] && pass "T12: launcher is created 0600 (not a symlink)" \
+    || fail "T12: launcher is created 0600" "mode=$lmode path=$lpath"
+  [ "$(cat "$W/t12-victim")" = SENTINEL ] && [ "$lpath" != "$TEAM_REG_DIR/team-$TM-longrole.launch.sh" ] \
+    && pass "T12: a symlink at the old predictable launcher name is not followed" \
+    || fail "T12: a symlink at the old predictable launcher name is not followed" "victim=$(cat "$W/t12-victim") path=$lpath"
 }
 
 # ══════════════════════════════════════════════════════════════════
