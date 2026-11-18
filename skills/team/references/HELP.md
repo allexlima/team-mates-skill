@@ -243,7 +243,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
                  a ready task, on its own line or claimed by starting its status line with
-                 "T<n>:" — hand it that task. A claimed task counts as assigned, not unassigned.
+                 "T<n>:". Hand it that task. A claimed task counts as assigned, not unassigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
   Live teammates' state comes from the cmux hooks the claude shim injects — no screen
@@ -313,9 +313,10 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted paths go to the auto classifier. One partial block: `git commit --no-verify` (and `-n`) is denied for every teammate
-  through `--disallowedTools`, since it skips the secret-scanning hooks. It is not a complete
-  fence: the deny rules do not match a git command that starts with a global option
+  still run. Likewise under auto mode the Edit/Write scope is pre-approval, not a fence; unlisted
+  paths go to the auto classifier. One partial block: `git commit --no-verify` (and `-n`) is denied for every teammate
+  through `--disallowedTools`, since it skips the secret-scanning hooks. The deny
+  rules miss a git command that starts with a global option
   (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
   (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
   `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
