@@ -135,7 +135,9 @@ _team_allow+=",Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bas
 _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 # Denied for every teammate (deny beats allow, so `Bash(git commit:*)` above cannot approve these):
 # git commit's hook-skipping flag, long form (and its unambiguous prefixes) and -n. A rule matches the
-# command text, so a combined short flag such as -an is not caught.
+# command text, so a combined short flag such as -an is not caught. Live-probed (CLI 2.1.306): no deny
+# rule, not even Bash(git *), matches a git command that starts with a global option, so
+# `git -C <dir> commit --no-verify` and `git -c core.hooksPath=… commit` get through; that needs a hook.
 _team_deny="Bash(git commit *--no-veri*),Bash(git commit -n*),Bash(git commit * -n*)"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.

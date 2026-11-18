@@ -284,7 +284,8 @@ side's best evidence) · Dropped (refuted) · Next steps.
   destructive form (`git stash`, `git branch`, `git switch`, `find`, `npm run`) are left off,
   as are pushes, `gh` writes, installs, deploys and `rm`; those go through the TL (or the
   lead). That is a convention, not a hard block: under auto mode an unlisted command can
-  still run. `git commit --no-verify` and `-n` (hook skipping) are denied outright.
+  still run. `git commit --no-verify` and `-n` (hook skipping) are denied, except when git
+  is called with a global option first (`git -C <dir> commit …`, `git -c core.hooksPath=…`).
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
