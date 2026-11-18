@@ -244,7 +244,7 @@ _mkrun() {
     || fail "T8/T9: launcher carries --model and the prompt" "line=${line:0:300}"
   # T12: exclusive create. The launcher is a fresh 0600 file with a unique name; the old name's
   # symlink is untouched and its target never written.
-  lpath=${typed#bash }; lmode=$(stat -f %Lp "$lpath" 2>/dev/null || stat -c %a "$lpath" 2>/dev/null)
+  lpath=${typed#bash }; lmode=$(stat -c %a "$lpath" 2>/dev/null || stat -f %Lp "$lpath" 2>/dev/null)
   [ "$lmode" = 600 ] && [ ! -L "$lpath" ] && pass "T12: launcher is created 0600 (not a symlink)" \
     || fail "T12: launcher is created 0600" "mode=$lmode path=$lpath"
   [ "$(cat "$W/t12-victim")" = SENTINEL ] && [ "$lpath" != "$TEAM_REG_DIR/team-$TM-longrole.launch.sh" ] \
@@ -252,7 +252,7 @@ _mkrun() {
     || fail "T12: a symlink at the old predictable launcher name is not followed" "victim=$(cat "$W/t12-victim") path=$lpath"
   # T12: the system prompt file feeds --append-system-prompt-file. A symlink at its predictable name
   # is replaced, not written through; the result is a regular 0600 file holding the rules.
-  sp="$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"; spmode=$(stat -f %Lp "$sp" 2>/dev/null || stat -c %a "$sp" 2>/dev/null)
+  sp="$TEAM_REG_DIR/team-$TM-longrole.sysprompt.md"; spmode=$(stat -c %a "$sp" 2>/dev/null || stat -f %Lp "$sp" 2>/dev/null)
   [ "$(cat "$W/t12-victim2")" = SENTINEL2 ] && [ ! -L "$sp" ] && [ "$spmode" = 600 ] && grep -q '^# Teammate working rules' "$sp" \
     && pass "T12: sysprompt replaces a symlink at its name (0600, target untouched)" \
     || fail "T12: sysprompt replaces a symlink at its name" "victim=$(head -c 40 "$W/t12-victim2") link=$([ -L "$sp" ] && echo yes || echo no) mode=$spmode"

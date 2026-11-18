@@ -55,7 +55,7 @@ for case in rd-link rd-link/ rd-755 rd-file; do
     && pass "reg-dir: TEAM_REG_DIR $case refused" || fail "reg-dir: TEAM_REG_DIR $case refused" "rc=$rc out=${out:0:160}"
 done
 out=$(TEAM_REG_DIR="$W/rd-new" bash "$TEAM_SH" list zz 2>&1) && rc=0 || rc=$?
-m=$(stat -f %Lp "$W/rd-new" 2>/dev/null || stat -c %a "$W/rd-new" 2>/dev/null || true)
+m=$(stat -c %a "$W/rd-new" 2>/dev/null || stat -f %Lp "$W/rd-new" 2>/dev/null || true)
 [[ $out != *"refusing"* ]] && [ "$m" = 700 ] \
   && pass "reg-dir: missing TEAM_REG_DIR created 0700" || fail "reg-dir: missing TEAM_REG_DIR created 0700" "mode=$m out=${out:0:160}"
 mkdir -m 700 "$W/cwd"
