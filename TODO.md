@@ -74,6 +74,20 @@ we own it), so the `.tabs` registry and its sidecars are no longer in a shared d
       only (or `TEAM_TMUX_SOCKET`, which only the tests set). A lead running on another socket
       (`tmux -L`) would read its teammates as gone.
 
+## Hook fence and cleanup
+
+Reported by tm2-hooks (branch `feat/hook-spawn`, not yet in `dev`); not re-checked here.
+
+- [ ] `team.sh clean` removes a team's per-teammate `.scratch` dirs and `.sysprompt.md` files from
+      the registry dir (21058af). It still leaves the team's `.sync` sidecar and the launcher files.
+      Decide whether `close` or `clean` owns removing `.sync`.
+- [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
+      wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
+- [ ] The PreToolUse fence covers only Edit/Write and the listed git forms. It does not cover
+      `eval`, backticks, `$(...)`, `xargs`, `env -S` strings, a changed `HOME` or
+      `XDG_CONFIG_HOME`, aliases already in the user's git config, GNU `time --output`, or any
+      other Bash write. A real Bash sandbox is still open.
+
 ## Roles
 
 - [ ] The shared role `~/.claude/team/roles/pm.md` holds facts about one project. Roles hold
