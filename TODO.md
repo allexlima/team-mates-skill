@@ -79,12 +79,18 @@ Reported by tm2-hooks (`feat/hook-spawn`, `feat/hook-fence`; not yet in `dev`); 
 - [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
 - [ ] The PreToolUse fence (feat/hook-fence @8018736) covers Edit/Write/MultiEdit/NotebookEdit
-      paths and the git hook-skip forms, including global options, `sudo`, `env -S`, `$(...)`
+      paths and the git hook-skip forms, including global options, `sudo`, `doas`, `env -S`, `$(...)`
       and `time --output`. Still allowed: `eval "git commit ..."`, backticks, `xargs git commit`,
       `HOME=<dir>` or `XDG_CONFIG_HOME=<dir>` pointing git at another global config, aliases in
       the user's own git config (`ci=commit -n`), git run from another interpreter
       (`python3 -c "os.system(...)"`), and every other Bash write (`echo hi > /tmp/file`). A real
       Bash sandbox is still open.
+- [ ] The fence fails safe, so it also denies some harmless commands: a key-only read such as
+      `git config core.hooksPath`, `git commit -m --no-verify` (the flag is only message text),
+      and a heredoc whose text mentions `git commit -n`. Accepted for now.
+- [ ] `TEAM_FENCE_ROOTS` holds the whole run dir, so a teammate can edit other teammates'
+      reports, prompts and status files. Narrow it to the teammate's own status and report
+      files plus `tasks.md`.
 
 ## Roles
 

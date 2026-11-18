@@ -6,7 +6,7 @@
   keys core.hooksPath, alias.* and include*/includeIf.* set via -c, --config-env or a
   `git config` write; also GIT_CONFIG, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM (a whole
   config file), and GIT_CONFIG_PARAMETERS/KEY_n naming one of those keys. The git argv is
-  parsed, so `git -C <dir> ...` and wrapper forms (env, sudo, sh -c, ...) are caught.
+  parsed, so `git -C <dir> ...` and wrapper forms (env, sudo, doas, sh -c, ...) are caught.
 Known gaps, not fenced: every other Bash write; commands built by eval, backticks, $(...),
 xargs or `env -S` split strings; HOME= or XDG_CONFIG_HOME= pointing git at another config;
 aliases already present in the user's git config.
@@ -17,7 +17,7 @@ import os
 import shlex
 import sys
 
-WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo",
+WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo", "doas",
             "if", "then", "elif", "else", "while", "until", "do", "!", "{"}  # reserved words too
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
@@ -25,7 +25,7 @@ WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "-
                       "--user", "--group", "--host", "--prompt", "--role", "--type", "--close-from",
                       "--other-user", "--chroot", "--command-timeout"}
 # per wrapper, a short-option cluster ending in one of these letters takes a value
-WRAPPER_VALUE_SHORT = {"env": "uCSP", "nice": "n", "exec": "a", "timeout": "sk", "sudo": "ugCDhprtUTR", "time": "of"}
+WRAPPER_VALUE_SHORT = {"env": "uCSP", "nice": "n", "exec": "a", "timeout": "sk", "sudo": "ugCDhprtUTR", "doas": "uCa", "time": "of"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
 HOOKS = "git must not override core.hooksPath, aliases or includes"
 CONFIG_SAFE = {"--get", "--get-all", "--get-regexp", "-l", "--list", "get", "list", "--unset", "--unset-all", "unset"}
