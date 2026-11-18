@@ -253,7 +253,7 @@ out=$(tm bash "$TEAM_SH" spawn "$T" w "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
   && pass "F12: a fresh spawn over a FINISHED row of the same title is not blocked by the duplicate guard (decision 27)" \
   || fail "F12: dup guard vs finished" "rc=$rc out=$out"
 fixture f12b; row surface:42 w live; printf 'p\n' > "$RUN/prompts/w.md"
-CMUX_GONE_REFS= out=$(tm bash "$TEAM_SH" spawn "$T" w "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
+out=$(tm bash "$TEAM_SH" spawn "$T" w "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
 { [ $rc = 2 ] && grep -q 'already live' <<<"$out"; } \
   && pass "F12b: control — a LIVE duplicate is still refused (exit 2, 'already live')" || fail "F12b: live dup refused" "rc=$rc out=$out"
 

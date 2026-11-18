@@ -530,6 +530,7 @@ pill=$(grep -E '^set-status ' "$CMUX_LOG" | head -1)
 # _st_row must therefore never emit an empty field -- absent values use '-'.
 RUNN="$G/.team/runs/2026-10-08-n1"; mkdir -p "$RUNN/reports" "$RUNN/status"
 printf 'plain step with no note\n' > "$RUNN/status/q.txt"
+# shellcheck disable=SC2097,SC2098 # the parent-side expansion is the same value as the export
 rec=$(LC_ALL=en_US.UTF-8 TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
