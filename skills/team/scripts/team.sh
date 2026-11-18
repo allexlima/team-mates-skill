@@ -105,8 +105,9 @@
 # (ANTHROPIC_MODEL, else "model" in managed-settings, else ~/.claude/settings.json), so a haiku-tier
 # default gets the same treatment. Every other tier uses TEAM_PERMISSION_MODE (default auto) plus the
 # _team_allow allowlist defined below (local read/build/test/git work and Chrome DevTools MCP).
-# Spawned tabs/panes are recorded in $TEAM_REG_DIR/team-<team>.tabs (default /tmp; tests point it at a
-# scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
+# Spawned tabs/panes are recorded in $TEAM_REG_DIR/team-<team>.tabs (default: the private dir
+# ${TMPDIR:-/tmp}/team-<uid>, created 0700 and refused unless it is a real directory you own with mode
+# 700; tests point TEAM_REG_DIR at a scratch dir so they never read or rewrite live registries), one row each (written by _reg_add):
 # "cmux <ref> <layout:pane|tab|dash> <title> <model|-> <subagent-model|-> <run-dir|-> <project-root>
 #  <state:live|finished> <session-id|-> <cwd>". <state> is `finished` once `finish` closed the teammate on
 # purpose: such a row is kept by prune and reap (only `close`, which ends the team, drops it), holds no cap
@@ -155,7 +156,25 @@ _secret_lines() { sed -E 's/(^|[^A-Za-z0-9._%+-])git@/\1git /g' | grep -nEi -- "
 # pipeline fail, and it falls back to $PWD.
 _root() { git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p' || pwd; }
 _roles_lib() { echo "${TEAM_ROLES_DIR:-$HOME/.claude/team/roles}"; }
-_reg_dir() { echo "${TEAM_REG_DIR:-/tmp}"; }
+# The registry dir holds every per-team state file (.tabs registry, .round and .sync sidecars, system
+# prompts, launchers) and trusts what it reads there, so by default it is a private per-user dir, not
+# bare /tmp: any local user could pre-create or symlink a name in a shared dir. TEAM_REG_DIR overrides
+# it (tests; the caller then owns its safety). Refuses unless the dir is a real directory we own, 0700.
+_reg_dir() {
+  if [ -n "${TEAM_REG_DIR:-}" ]; then printf '%s\n' "$TEAM_REG_DIR"; return 0; fi
+  local t=${TMPDIR:-/tmp} d m
+  d="${t%/}/team-$EUID"
+  mkdir -m 700 "$d" 2>/dev/null || true
+  m=$(stat -c %a "$d" 2>/dev/null || stat -f %Lp "$d" 2>/dev/null) || m=
+  if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ] || [ "$m" != 700 ]; then
+    echo "team.sh: refusing registry dir $d: it must be a real directory you own with mode 700 (fix it, or set TEAM_REG_DIR)" >&2
+    return 3
+  fi
+  printf '%s\n' "$d"
+}
+# Resolve and check the dir once in the main shell (an exit inside $(...) would not stop the script),
+# then export it so the many later $(_reg_dir) calls are a plain echo.
+_reg_dir_init() { TEAM_REG_DIR=$(_reg_dir) || exit 3; export TEAM_REG_DIR; }
 _reg() { echo "$(_reg_dir)/team-$1.tabs"; }
 _need_py() {
   command -v python3 >/dev/null 2>&1 && return 0
@@ -395,6 +414,9 @@ _lock() {
 # Distinct titles of live teammate rows (layout pane|tab; the dash monitor is not a teammate, and a
 # finished teammate has no session running, so neither holds one of the 8 slots).
 _mates() { [ -f "$1" ] || return 0; awk '($3=="pane" || $3=="tab") && $9!="finished" {print $4}' "$1" | sort -u; }
+
+# Every subcommand that reads or writes the registry dir checks it first.
+case $sub in reap|close|finish|show|list|status|monitor|sync|spawn) _reg_dir_init ;; esac
 
 # Libraries: functions only (sub_<name> per subcommand), sourced after the helpers they use,
 # so a missing lib only disables its own subcommands.
@@ -1002,7 +1024,7 @@ rulesfile="$here/../references/teammate-rules.md"
 # subagents, verify what they return) plus the caveman style unless --no-caveman.
 sysprompt="$(_reg_dir)/team-$team-$role.sysprompt.md"
 # The name stays fixed because `status` reads this file's mtime as the round's start. The registry dir
-# defaults to world-writable /tmp, so write to an exclusive 0600 mktemp file and rename it into place:
+# can be shared (TEAM_REG_DIR), so write to an exclusive 0600 mktemp file and rename it into place:
 # rename(2) never follows a symlink at the destination and, in a sticky dir, refuses to replace
 # another user's file (a plain > would write through a pre-made file or symlink and feed its
 # content to claude as the system prompt).

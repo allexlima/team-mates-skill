@@ -69,8 +69,8 @@ _mux_open() {
       # cmux types --command into the new pane's tty, whose input line is cut at 1024 bytes
       # (MAX_CANON), so a long spawn command lost its tail (--model, the prompt). Type a short
       # launcher instead; the full command lives in a file beside the registry. mktemp creates it
-      # exclusively (0600, unique name): the registry dir defaults to world-writable /tmp, where a
-      # fixed name could be a pre-made file or symlink that we would then write and run.
+      # exclusively (0600, unique name): even in a shared TEAM_REG_DIR a fixed name could be a pre-made
+      # file or symlink that we would then write and run.
       local launch; launch=$(mktemp "$(_reg_dir)/team-$title.launch.XXXXXX") || return 1
       # It deletes itself first: nothing else would. bash keeps the open script readable after its
       # name is unlinked, so the claude line below still runs.

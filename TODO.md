@@ -31,20 +31,17 @@ Open items. Each one names where the work lives.
 
 ## Security
 
-- [ ] The registry dir defaults to world-writable `/tmp` and several state files sit there at
-      predictable names: the `.tabs` registry (appended to), the `.round` sidecar
-      (`skills/team/scripts/team.sh` ~954-957, plain `>`), `$reg.tmp` (~730, 948, 1049) and the sync
-      state file (`skills/team/scripts/lib/status.sh` ~1177). Another local user can pre-create or
-      symlink any of them: a write is redirected or truncates a file of ours, and a registry they
-      edit is trusted. Worst case, `--resume` reads the session id from col 10 of `.tabs`
-      (`team.sh` ~936) and puts it unquoted into the launcher (~1019), so a crafted id runs a
-      command (tm1-reviewer reproduced it with `x;touch ...;:`). The launcher and the system
-      prompt were fixed in this run (mktemp). Proposed fix: default `_reg_dir` to a per-user
-      `0700` dir (`${TMPDIR:-/tmp}/team-$(id -u)`, created with `mkdir -p -m 700`, refused unless
-      `[ -O "$d" ] && [ ! -L "$d" ]`), and also `printf %q` the session id at ~1019 and validate it
-      as a uuid at ~936. Docs that name the default: `skills/team/SKILL.md`, the `team.sh` header
-      and `lib/status.sh`. This changes where the registry lives, so tests that set
-      `TEAM_REG_DIR` are unaffected.
+The registry dir is now a private per-user dir (`${TMPDIR:-/tmp}/team-<uid>`, 0700, refused unless
+we own it), so the `.tabs` registry and its sidecars are no longer in a shared dir. What is left:
+
+- [ ] No test uses a second user, so "a registry dir owned by someone else is refused" is checked
+      only by reading `_reg_dir` (`[ -O ]`), not by running it. Needs a second account or root.
+- [ ] An explicit `TEAM_REG_DIR` is trusted as given. If someone points it at a shared dir
+      (e.g. `/tmp`), the old predictable-name risk is back for the `.tabs`, `.round`, `.sync` and
+      `$reg.tmp` files; the launcher and system prompt are safe there (mktemp).
+- [ ] Registries and sidecars an older version left in `/tmp/team-*.tabs` are ignored, not
+      migrated: `reap` and `status` look only in the new dir. Close such a team with the old copy,
+      or move its files into the new dir by hand.
 
 ## tmux backend
 

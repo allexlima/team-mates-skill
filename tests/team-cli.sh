@@ -111,5 +111,22 @@ for t in "origin git@github.com:acme/widgets.git" "ssh://git@github.com/acme/wid
   [ $rc = 0 ] && pass "not a secret: $t" || fail "not a secret: $t" "rc=$rc"
 done
 
+# T15: with no TEAM_REG_DIR the registry dir is a private per-user dir under $TMPDIR, created 0700 and
+# refused unless it is a real directory we own with mode 700 (a shared /tmp name could be pre-made).
+uid=$(id -u); regtest() { out=$(env -u TEAM_REG_DIR TMPDIR="$1" bash "$TEAM_SH" status nosuch 2>&1) && rc=0 || rc=$?; }
+mkdir -p "$W/td1"; regtest "$W/td1"
+d1="$W/td1/team-$uid"; m1=$(stat -c %a "$d1" 2>/dev/null || stat -f %Lp "$d1" 2>/dev/null) || m1=none
+[ $rc = 3 ] && [ -d "$d1" ] && [ ! -L "$d1" ] && [ "$m1" = 700 ] && [[ $out != *refusing* ]] \
+  && pass "T15: the default registry dir is created 0700 under TMPDIR" || fail "T15: default registry dir" "rc=$rc mode=$m1 out=$out"
+regtest "$W/td1"
+[ $rc = 3 ] && [[ $out != *refusing* ]] && pass "T15: an existing 0700 registry dir is accepted" || fail "T15: existing dir accepted" "rc=$rc out=$out"
+mkdir -p "$W/td2/elsewhere"; ln -s "$W/td2/elsewhere" "$W/td2/team-$uid"; regtest "$W/td2"
+[ $rc = 3 ] && [[ $out == *refusing* ]] && [ -z "$(ls -A "$W/td2/elsewhere")" ] \
+  && pass "T15: a symlink at the registry dir is refused (and not written through)" || fail "T15: symlink refused" "rc=$rc out=$out"
+mkdir -p "$W/td3/team-$uid"; chmod 755 "$W/td3/team-$uid"; regtest "$W/td3"
+[ $rc = 3 ] && [[ $out == *refusing* ]] && pass "T15: a registry dir that is not mode 700 is refused" || fail "T15: mode refused" "rc=$rc out=$out"
+regtest "$W/no-such-tmpdir"
+[ $rc = 3 ] && [[ $out == *refusing* ]] && pass "T15: a registry dir that cannot be created is refused" || fail "T15: uncreatable refused" "rc=$rc out=$out"
+
 [ $fails = 0 ] && echo "all passed" || echo "$fails failed"
 [ $fails = 0 ]

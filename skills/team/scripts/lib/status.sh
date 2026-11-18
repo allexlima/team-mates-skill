@@ -6,7 +6,7 @@
 # Requires team.sh globals/functions (bound before sourcing):
 #   $here              absolute dir of team.sh
 #   _root              prints main checkout root (main worktree)
-#   _reg <team>        prints ${TEAM_REG_DIR:-/tmp}/team-<team>.tabs
+#   _reg <team>        prints <registry dir>/team-<team>.tabs (team.sh _reg_dir: private 0700 per-user dir)
 #   _reg_add <team> <ref> <layout> <title> <model|-> <submodel|-> <rundir|-> [<sid> <cwd>]
 #                      appends a registry row (root + state=live inserted automatically)
 #   _pane_of <ref>     prints cmux pane_ref or "gone" (cmux only)
