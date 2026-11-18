@@ -228,6 +228,16 @@ else fail "F11: resume command" "rc=$rc cmd=$cmdline out=$out"; fi
 { [ "$(awk -v t="$T-w" '$4==t' "$REG" | wc -l | tr -d ' ')" = 1 ] && [ "$(col9 w)" = live ]; } \
   && pass "F11b: the resumed session replaces the finished row (one live row, same title)" || fail "F11b: row replaced" "$(cat "$REG")"
 
+# F11f: resume WITHOUT a model: nothing sits between the tool lists and the prompt, so a spaced
+# (variadic) --allowedTools/--disallowedTools value would swallow the prompt as one more rule.
+fixture f11f; row surface:34 w finished "$SID" "$R"; printf 'next round\n' > "$RUN/prompts/w.md"; : > "$CMUX_LOG"
+out=$(tm bash "$TEAM_SH" spawn --resume "$T" w "$RUN/prompts/w.md" 2>&1); rc=$?
+cmdline=$(grep -E 'new-split|new-surface' "$CMUX_LOG" | head -1)
+if [ $rc = 0 ] && grep -qE -- '--disallowedTools=([\\].|[^ \\])+ "\$\(cat ' <<<"$cmdline" \
+   && ! grep -qE -- '--(dis)?allowedTools ' <<<"$cmdline" && ! grep -q -- '--model' <<<"$cmdline"; then
+  pass "F11f: --resume without a model keeps the prompt out of the variadic tool-list flags"
+else fail "F11f: resume without model" "rc=$rc cmd=$cmdline out=$out"; fi
+
 fixture f11c; out=$(tm bash "$TEAM_SH" spawn --resume "$T" ghost "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
 printf 'p\n' > "$RUN/prompts/w.md"; out=$(tm bash "$TEAM_SH" spawn --resume "$T" ghost "$RUN/prompts/w.md" sonnet 2>&1); rc=$?
 [ $rc = 3 ] && pass "F11c: --resume with no recorded row/session exits 3" || fail "F11c: resume w/o row" "rc=$rc out=$out"
