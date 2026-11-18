@@ -1132,6 +1132,41 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
     || fail "perm-2: haiku allowlist" "got=$a want=$want"
 }
 
+# perm-3: on a build run (--worktree) Edit is scoped to the worktree and the teammate's run-dir files
+# (logical and physical paths: a rule is checked against both the path asked for and the file it
+# resolves to), and every spawn denies git commit's hook-skipping flags.
+_disallow_of() {
+  grep -oE -- '--disallowedTools ([\\].|[^ \\])+' "$CMUX_LOG" | tail -1 | sed 's/^--disallowedTools //; s/\\//g' || true
+}
+{
+  R="$W/perm3"; _mkgit "$R"; RUNP="$R/.team/runs/x-perm3"; _mkrun "$RUNP"
+  pf="$RUNP/prompts/b.md"; printf 'prompt\n' > "$pf"
+  TM="permw$$"; _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn --worktree "$TM" b "$pf" sonnet) >/dev/null 2>&1 || true
+  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss= bad=
+  for p in "$wt" "$(cd "$wt" 2>/dev/null && pwd -P)"; do
+    case ",$a," in *",Edit(/$p/**),"*) ;; *) miss+=" Edit(/$p/**)" ;; esac
+  done
+  for p in "$RUNP" "$(cd "$RUNP" && pwd -P)"; do
+    for e in "Edit(/$p/reports/b.md)" "Edit(/$p/tasks.md)" "Edit(/$p/status/b.txt)"; do
+      case ",$a," in *",$e,"*) ;; *) miss+=" $e" ;; esac
+    done
+  done
+  case ",$a," in *,Edit,*|*,Write,*) bad+=" bare-Edit/Write" ;; esac
+  for e in 'Bash(git commit *--no-veri*)' 'Bash(git commit -n*)' 'Bash(git commit * -n*)'; do
+    case ",$d," in *",$e,"*) ;; *) miss+=" deny:$e" ;; esac
+  done
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [ -n "$a" ] && [ -z "$miss" ] && [ -z "$bad" ] \
+    && pass "perm-3: build-run Edit scoped to worktree + run files; hook-skip commit denied" \
+    || fail "perm-3: scoped Edit + hook-skip deny" "missing:$miss bad:$bad allow=$a deny=$d"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" s "$pf" sonnet) >/dev/null 2>&1 || true
+  d=$(_disallow_of); rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [[ $d == *'Bash(git commit *--no-veri*)'* ]] && pass "perm-4: non-build spawn also denies hook-skipping commits" \
+    || fail "perm-4: non-build deny" "deny=$d"
+}
+
 # ══════════════════════════════════════════════════════════════════
 # doccheck passes after all changes
 # ══════════════════════════════════════════════════════════════════

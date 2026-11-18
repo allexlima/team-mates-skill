@@ -121,7 +121,9 @@ set -euo pipefail
 # any npm script) is left off, as are pushes, gh writes, installs, deploys and rm: those go through
 # the TL (or the lead). Under auto mode that is a convention, not a block: an unlisted command can
 # still run if auto mode allows it.
-_team_allow="Read,Glob,Grep,Edit,Write,Agent,SendMessage,ListAgents"
+# Edit (which also covers Write and NotebookEdit) is added at spawn: on a build run it is scoped to
+# the worktree and the teammate's run-dir files, otherwise it is bare Edit,Write.
+_team_allow="Read,Glob,Grep,Agent,SendMessage,ListAgents"
 _team_allow+=",Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*)"
 _team_allow+=",Bash(git commit:*)"
 _team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*)"
@@ -129,6 +131,10 @@ _team_allow+=",Bash(bash -n:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(mak
 _team_allow+=",Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
 _team_allow+=",Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/scripts/team.sh status:*)"
 _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
+# Denied for every teammate (deny beats allow, so `Bash(git commit:*)` above cannot approve these):
+# git commit's hook-skipping flag, long form (and its unambiguous prefixes) and -n. A rule matches the
+# command text, so a combined short flag such as -an is not caught.
+_team_deny="Bash(git commit *--no-veri*),Bash(git commit -n*),Bash(git commit * -n*)"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
 subs="init lead-title reap gate-init clean close finish models pick-model role roles role-pull role-promote status monitor sync facts-lint doccheck show list spawn"
@@ -1053,7 +1059,30 @@ else
   cmd="cd $(printf %q "$dir") && $envs claude --session-id $sid --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
 fi
 # One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
+if [ "$tier" != haiku ]; then
+  # A build run (worktree, also when resumed) edits only its worktree and its run-dir files. Edit rules
+  # are checked against both the path asked for and the file it resolves to, so each path is listed
+  # as given, physical, and via the lead's cwd (e.g. ~/Projects -> ~/Documents/Projects). `//` = absolute.
+  case $dir in
+    */.team/worktrees/*)
+      wtp=$(cd "$dir" && pwd -P) wtl="$PWD/.team/worktrees/${dir##*/}"
+      [ "$(cd "$wtl" 2>/dev/null && pwd -P)" = "$wtp" ] || wtl=$dir
+      for p in "$dir" "$wtp" "$wtl"; do
+        case ",$allow," in *",Edit(/$p/**),"*) ;; *) allow+=",Edit(/$p/**)" ;; esac
+      done
+      if [ "$rundir" != - ]; then
+        for p in "$rundir" "$(cd "$rundir" && pwd -P)"; do
+          for f in "reports/$role.md" tasks.md "status/$role.txt"; do
+            case ",$allow," in *",Edit(/$p/$f),"*) ;; *) allow+=",Edit(/$p/$f)" ;; esac
+          done
+        done
+      fi ;;
+    *) allow+=",Edit,Write" ;;
+  esac
+fi
+# One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
 [ -n "$allow" ] && cmd+=" --allowedTools $(printf %q "$allow")"
+cmd+=" --disallowedTools $(printf %q "$_team_deny")"
 if [ -z "$resume" ] && [ -s "$sysprompt" ]; then cmd+=" --append-system-prompt-file $(printf %q "$sysprompt")"; fi
 [ -n "$model" ] && cmd+=" --model $(printf %q "$model")"
 cmd+=" \"\$(cat $(printf %q "$pfile"))\""
