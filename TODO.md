@@ -12,13 +12,15 @@ Open items. Each one names where the work lives.
 
 ## Shell lint
 
-- [ ] v0.2.0: clean up `shellcheck -S warning`; CI gates at `-S error` for v0.1.1. Ten warnings
-      (shellcheck 0.11; `.shellcheckrc` turns SC1007 off on purpose). Re-run
+- [ ] v0.2.0: clean up `shellcheck -S warning`. CI does not run shellcheck yet, and there is no
+      `.shellcheckrc`. shellcheck 0.11 reports twelve warnings besides SC1007 (26 of those, from
+      `X= cmd` env assignments). Re-run
       `shellcheck -S warning -f gcc skills/team/scripts/team.sh skills/team/scripts/lib/*.sh tests/*.sh`
       before fixing, since line numbers move: team.sh SC2034 (unused `i`); lib/mux.sh and
-      lib/status.sh SC2154 (`sub`/`here` unassigned); lib/status.sh SC1010 (missing `;` before
-      `done`); tests/roles.sh SC2115 (use `${var:?}`); tests/status-render.sh SC2097/SC2098;
-      tests/team-finish.sh and tests/tmux.sh SC2034 (unused `CMUX_GONE_REFS`, `o3`).
+      lib/status.sh SC2154 (`sub`/`here` unassigned); lib/status.sh SC2064 (double-quoted `trap`)
+      and SC1010 (missing `;` before `done`); tests/roles.sh SC2115 (use `${var:?}`);
+      tests/status-render.sh SC2097/SC2098; tests/team-finish.sh and tests/tmux.sh SC2034 (unused
+      `CMUX_GONE_REFS`, `o3`).
 
 ## TUI monitor
 
