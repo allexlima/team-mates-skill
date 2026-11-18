@@ -61,6 +61,7 @@ esac
 SH
 chmod +x "$W/bin/cmux"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$W/bin/claude"; chmod +x "$W/bin/claude"
+ORIG_PATH=$PATH
 export PATH="$W/bin:$PATH" TMUX_LOG CMUX_LOG
 unset TEAM_MEMBER CMUX_WORKSPACE_ID CMUX_SURFACE_ID
 export TMUX="/tmp/tmux-test,1,0" TMUX_PANE=%0 TEAM_MUX=tmux
@@ -168,10 +169,13 @@ o=$(cd "$R" && env -u TMUX -u TMUX_PANE -u TEAM_MUX PATH="$W/realbin:/usr/bin:/b
 if [ -n "$REAL_TMUX" ]; then
   sock="team-test-$$"
   ln -s "$REAL_TMUX" "$W/realbin/tmux"
-  "$REAL_TMUX" -L "$sock" new-session -d -s t -x 200 -y 50
-  lead=$("$REAL_TMUX" -L "$sock" display -p -t t '#{pane_id}')
   printf '#!/usr/bin/env bash\nsleep 30\n' > "$W/realbin/claude"; chmod +x "$W/realbin/claude"
-  RP="$W/realbin:$PATH"; RP=${RP//"$W/bin:"/}
+  # ${PATH//"$W/bin:"/} is mangled by bash 3.2 (macOS /bin/bash), so build RP from the saved PATH.
+  RP="$W/realbin:$ORIG_PATH"
+  # A pane inherits the tmux SERVER's environment, not spawn's: start the server with RP so the pane
+  # finds the fake claude (else it exits 127, or runs a real claude on a developer machine).
+  env PATH="$RP" "$REAL_TMUX" -L "$sock" new-session -d -s t -x 200 -y 50
+  lead=$("$REAL_TMUX" -L "$sock" display -p -t t '#{pane_id}')
   o=$(cd "$R" && env PATH="$RP" TEAM_TMUX_SOCKET="$sock" TMUX_PANE="$lead" bash "$TEAM_SH" spawn x9 a "$RUN/prompts/p.md" sonnet 2>&1); rc=$?
   p9=$(awk '{print $2}' "$(REG x9)" 2>/dev/null)
   alive=$("$REAL_TMUX" -L "$sock" display -p -t "$p9" '#{pane_title}' 2>/dev/null || true)
