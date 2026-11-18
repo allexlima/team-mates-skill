@@ -34,6 +34,9 @@ check "only t/ev/tool/ntype keys, valid JSON" '[ "$keys" = "['"'"'ev'"'"', '"'"'
 ml=$(printf '{"tool_name":"Read",\n"tool_input":{\n"tool_name":"Leak"}}')
 printf '%s' "$ml" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
 check "multi-line payload: later lines ignored" '! grep -q Leak "$E"'
+mcp=mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests
+printf '{"tool_name":"%s","tool_input":{}}' "$mcp" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "75-char MCP tool name kept" '[ ${#mcp} = 75 ] && tail -1 "$E" | grep -q "\"tool\":\"$mcp\"}"'
 
 n=$(wc -l <"$E")
 printf '{}' | env -u TEAM_EVENTS_FILE sh "$H" Stop
