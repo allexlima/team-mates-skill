@@ -1,0 +1,2 @@
+# SC1007: `VAR= cmd` is used on purpose to set an empty env var.
+disable=SC1007
