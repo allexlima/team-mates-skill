@@ -1316,6 +1316,15 @@ _disallow_of() {
   [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] && [ -f "$D/team-$T-bar-x.scratch/keep" ] \
     && pass "T28b: close removes the files of the rows it drops, only those" \
     || fail "T28b: close removes the files of the rows it drops, only those" "$(ls "$D" | grep "$T")"
+  # Worktrees too: clean foo (registry already gone after close) keeps foo-bar's clean worktree.
+  _git -C "$R" worktree add -q -b "team/$T-a" "$R/.team/worktrees/$T-a" HEAD
+  _git -C "$R" worktree add -q -b "team/$T-bar-x" "$R/.team/worktrees/$T-bar-x" HEAD
+  printf 'cmux surface:7 pane %s - - - %s finished - %s\n' "$T-bar-x" "$R" "$R" > "$D/team-$T-bar.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ ! -e "$R/.team/worktrees/$T-a" ] && [ -d "$R/.team/worktrees/$T-bar-x" ] \
+    && pass "T28b: clean removes its own worktree, not a prefixed team's" \
+    || fail "T28b: clean removes its own worktree, not a prefixed team's" "$(ls "$R/.team/worktrees" | grep "$T")"
+  _git -C "$R" worktree remove --force "$R/.team/worktrees/$T-bar-x" 2>/dev/null || true
   rm -rf "$D/team-$T"*
 }
 

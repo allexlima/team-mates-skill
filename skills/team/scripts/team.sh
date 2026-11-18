@@ -625,15 +625,21 @@ fi
 
 if [ "$sub" = clean ]; then
   team=${1:?team}
-  root=$(_root)
+  root=$(_root); reg=$(_reg "$team")
+  # Team slugs prefix each other (foo, foo-bar). With the team's registry, only its own titles count;
+  # after `close` removed it, any worktree another registered team lists is skipped.
+  if [ -f "$reg" ]; then mine=$(awk '{print $4}' "$reg"); others=
+  else mine=; others=$(find "$(_reg_dir)" -maxdepth 1 -name 'team-*.tabs' -exec awk '{print $4}' {} + 2>/dev/null); fi
   for wt in "$root"/.team/worktrees/"$team"-*; do
     [ -d "$wt" ] || continue
+    t=${wt##*/}
+    if [ -f "$reg" ]; then grep -qxF -- "$t" <<<"$mine" || continue
+    elif grep -qxF -- "$t" <<<"$others"; then echo "kept $wt (another team's)"; continue; fi
     if git -C "$root" worktree remove "$wt" 2>/dev/null; then echo "removed $wt"
     else echo "kept $wt (uncommitted changes)"; fi
   done
   # Finished teammates' scratch dirs and system prompts go too, by the titles in this team's own
   # registry (`close` already removed the files of the rows it dropped); a live teammate's are kept.
-  reg=$(_reg "$team")
   [ -f "$reg" ] && while IFS= read -r row; do
     read -r _ _ _ title _ <<<"$row" || true
     [ -n "${title:-}" ] || continue

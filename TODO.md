@@ -67,9 +67,6 @@ Reported by tm2-hooks (`feat/hook-spawn`, `feat/hook-fence`; not yet in `dev`); 
       `.scratch` dir and `.sysprompt.md` file from the registry dir, by exact title. It still leaves
       the team's `.sync` sidecar and the launcher files. Decide whether `close` or `clean` owns
       removing `.sync`.
-- [ ] `team.sh clean <team>` still picks worktrees by the glob `.team/worktrees/<team>-*`, so
-      `clean foo` also removes team `foo-bar`'s worktrees that have no uncommitted changes (their
-      branches stay). Scope it to the team's own worktrees.
 - [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
 - [ ] The PreToolUse fence (feat/hook-fence @8018736) covers Edit/Write/MultiEdit/NotebookEdit
