@@ -1,128 +1,80 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="/team: a team of Claude Code sessions in terminal panes. The lead sits on the left, teammates sit in a two-column grid, and a monitor shows overall progress, a team ETA, and one teammate that needs you. Illustrative run.">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Team-mates, the /team skill for Claude Code: the lead pane on the left, teammate panes in a two-column grid, and a monitor showing overall progress, a team ETA, and one teammate that needs you. Illustrative run.">
 </p>
 
-`/team` runs a small team of Claude Code sessions on one task. Each teammate is a full, interactive `claude` session in its own pane. A lead session plans the roles, relays findings between teammates for challenge rounds, and writes the final synthesis. It uses only standard features (interactive sessions, cross-session messaging, subagents), so it works where Claude Code's experimental [agent teams](https://code.claude.com/docs/en/agent-teams) are disabled.
-
-## What you get
-
-- **A pane per teammate.** Each pane is titled `<team>-<role>`. Click into any of them and talk to that teammate directly.
-- **One place for questions.** A teammate that needs your input sends it to the lead, which asks you in the lead pane, with options.
-- **Challenge rounds.** Each teammate receives the others' findings and must agree, dispute, or refine them with evidence. The result is split into consensus, disputed, dropped, and next steps.
-- **Build runs publish one PR per teammate.** In a git repo, each teammate gets its own worktree and branch, commits its own work, and passes it through a [no-mistakes](https://github.com/kunchenguid/no-mistakes) gate. One PR per teammate.
-- **Memory that stays in the project.** Roles, run records, and a `facts.md` ledger of verified findings live in a git-ignored `.team/` folder, so later runs start from what is already known.
-- **`--autoroles`.** The lead derives roles from your project, shows the roster, and waits for your approval before spawning anyone.
-
-## How it works
-
-<p align="center">
-  <img src="./assets/readme/how-it-works.svg" width="100%" alt="Flow of a /team run: you and the lead plan and approve; the lead starts teammates in panes, which fan out to subagents; a tasks.md backlog hands the next task to a teammate that reports; the monitor tracks progress; build branches become PRs through the no-mistakes gate and gh; synthesis records verified findings in .team/facts.md.">
-</p>
-
-1. **You and the lead plan.** The lead brainstorms the task with you, then writes back the roles, what is out of scope, and how the result gets checked. Nothing spawns until you approve.
-2. **Teammates start in panes.** Each role gets its own session. For larger tasks the lead proposes an optional tech lead and product manager. You keep or drop them with the roster.
-3. **Each teammate fans out.** It splits its own work across subagents, checks what they return, and writes its report to `.team/runs/`.
-4. **Work comes from a backlog.** `tasks.md` holds more tasks than teammates. A teammate that reports takes the next fitting task in the same session.
-5. **The monitor tracks progress.** It shows overall task progress and a team ETA. See [The monitor](#the-monitor).
-6. **Build runs publish through a gate.** Each teammate's branch goes through the no-mistakes gate and becomes a PR, opened with `gh`.
-7. **The lead synthesizes.** Findings that survive the challenge rounds go to `.team/facts.md` with their evidence. A stale fact is struck through with a pointer to the run that contradicted it, and never deleted.
-
-## The monitor
-
-While a team runs, a status pane opens and repaints as its state changes. Its headline is the overall task progress: finished tasks, plus each open task's share as its owner reports it. Next to it is a team ETA, a linear extrapolation from the time elapsed so far. Finished teammates fold into one line, a backlog line shows what is still pending, and a teammate that is idle while ready work has no owner is pinned under **NEEDS YOU**.
-
-The percentages are self-reported. Each teammate writes its own estimate, so the overall % and the ETA are rough indications, not measurements. In cmux, click a row or press its number to focus that teammate's pane. The pane closes itself once the last teammate finishes. `team.sh status <team>` prints one frame of the same view.
+**Team-mates** gives Claude Code a `/team` command. It runs a small team of Claude Code sessions on one task, each teammate a full interactive `claude` session in its own pane. Your session becomes the lead: it plans the roles with you, passes findings between teammates so they can challenge each other, and writes up what survives. It needs only standard Claude Code features (interactive sessions, cross-session messaging, subagents), so it works where the experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature is turned off.
 
 ## Install
 
 ```bash
-git clone https://github.com/allexlima/claude-code-team ~/.claude/skills/team
+npx skills add allexlima/team-mates-skill -g -a claude-code
 ```
 
-Start (or restart) Claude Code and run `/team --help`.
+This puts the skill in `~/.claude/skills/team`. Restart Claude Code and run `/team --help`.
 
-**Try it:** `/team review my current changes --autoroles`. The lead proposes roles from your repo, you approve, and the team runs.
+Update with `npx skills update team -g` and remove with `npx skills remove team -g`.
 
-**Update:** `git -C ~/.claude/skills/team pull` · **Uninstall:** `rm -rf ~/.claude/skills/team`
+<details>
+<summary>Install from a git clone instead</summary>
 
-### Requirements
-
-| | |
-|---|---|
-| Required | [Claude Code](https://code.claude.com) and `python3`. For panes, [cmux](https://cmux.dev) (default and recommended) or tmux as a fallback. `--inline` needs neither. |
-| Build runs | `git`, an `origin` remote, and `gh` for opening PRs. [no-mistakes](https://github.com/kunchenguid/no-mistakes) is optional; without it, commits stay local. |
-| Optional | [caveman](https://github.com/JuliusBrussee/caveman) installed at `~/.agents/skills/caveman` for terse teammate output (skipped if absent). |
-
-## Usage
-
+```bash
+git clone https://github.com/allexlima/team-mates-skill ~/team-mates-skill
+mkdir -p ~/.claude/skills
+ln -s ~/team-mates-skill/skills/team ~/.claude/skills/team
 ```
-/team <task> [options]
-```
+
+Update with `git -C ~/team-mates-skill pull`.
+</details>
+
+**Requirements:** [Claude Code](https://code.claude.com), `python3`, and [cmux](https://cmux.dev) (recommended) or tmux for the panes. With `--inline`, teammates run as subagents in your session and you need neither. Runs that edit code also use `git` and `gh`, plus [no-mistakes](https://github.com/kunchenguid/no-mistakes) if you have it.
+
+## Try it
 
 ```text
-/team review PR #42 for security, performance and test coverage
-/team why does the streaming job lag? --roles 4 --rounds 2 --model sonnet
 /team review my current changes --autoroles
+/team why does the streaming job lag? --roles 4 --rounds 2
 /team add retry logic to the ingestion job and cover it with tests --autoroles
-/team research vector search options for our RAG demo --tabs --autoclose
 ```
 
-Name roles yourself if you like: `Roles: security: auth + tokens, perf: DB queries, skeptic: challenge the others`. Saved roles load by name, first from the project (`.team/roles/`), then from your shared library (`~/.claude/team/roles/`).
+With `--autoroles`, the lead proposes roles from your repo and waits for your OK before starting anyone. Every flag and default is in `/team --help` ([HELP.md](skills/team/references/HELP.md)). Say **"shut down the team"** when you're done.
 
-Every flag and default is listed by `/team --help` and in [HELP.md](HELP.md). This README does not repeat them. When you're done, say **"shut down the team"**.
+Each teammate is a full Claude session with its own context window, so cost grows with team size. Two or three sharp roles usually beat five vague ones.
 
-## Team shape
+## How it works
 
-For anything beyond a very basic task, the lead proposes a **tech lead** (opus). The tech lead owns the backlog, assigns tasks, reviews, and merges. It also proposes a **product manager** (sonnet) when scope or acceptance criteria are fuzzy. Once a tech lead exists, it is the single authority for assigning backlog tasks.
+<p align="center">
+  <img src="./assets/readme/how-it-works.svg" width="100%" alt="Five steps: plan the roles with the lead, spawn one pane per teammate, work through the tasks.md backlog, challenge each other's findings, and record the survivors in .team/facts.md.">
+</p>
 
-## Build runs
+1. **Plan.** The lead talks the task through with you, then writes back the roles, what is out of scope, and how the result gets checked. Nothing starts until you approve.
+2. **Spawn.** Each role gets its own pane, titled `<team>-<role>`. Click into any pane to talk to that teammate. A teammate's questions go to the lead, which asks you in one place.
+3. **Work.** `tasks.md` holds more tasks than there are teammates. A teammate that reports takes the next task in the same session. Each one splits its own work across subagents.
+4. **Challenge.** Every teammate gets the others' findings and has to agree, dispute or refine them, with evidence.
+5. **Synthesis.** The lead sorts the result into consensus, disputed, dropped and next steps. Verified findings go to `.team/facts.md` with their evidence, so the next run starts from what is already known.
 
-Build runs edit code, so they publish. Each teammate works like a separate person: its own worktree, its own branch (`team/<team>-<role>`, or the project's own convention when its `CLAUDE.md` defines one), its own commits, and its own no-mistakes gate. The lead asks once per run who merges the PRs: the tech lead with `gh`, after review and green checks, or you.
+When the task edits code in a git repo, each teammate also gets its own worktree, branch and commits. With no-mistakes installed, each branch goes through its gate and becomes one PR; without it, the commits stay local.
 
-Commit and PR rules come from [git-practices.md](git-practices.md): Conventional Commits, one logical change per commit, and PRs kept under about 200 changed lines. Larger changes go in a chain of PRs, each based on the one before it. Judgment calls are forwarded to the lead, and you answer them in the lead pane.
+## The monitor
 
-## Permissions and models
+A status pane opens while the team runs. It shows overall task progress, a team ETA, and a **NEEDS YOU** block that pins any teammate needing attention, such as a dead session or one idle while ready work has no owner. `/team --help` lists every state. Teammates report their own percentages, so treat the progress and ETA as rough estimates.
 
-Teammates start in auto permission mode with a pre-approved allowlist of routine local commands: reads, edits, git inspection and commits, tests, and linting. It is a convention, not a hard block. Under auto mode an unlisted command can still run. Pushes, `gh` writes, installs, deploys, and destructive commands are left off the list and go through the tech lead or the lead.
+## Project memory
 
-The lead fits a model to each role, using the cheapest tier that still suits it. `--model` forces one model everywhere. Haiku-tier teammates run unattended in dontAsk mode with a per-teammate allowlist, and they are refused on build runs.
-
-## Project memory: `.team/`
-
-Created at the project root on first run. It is git-ignored, along with `CLAUDE.local.md`, and a one-time pointer is added to `CLAUDE.local.md`, never to `CLAUDE.md`.
+The skill keeps its state in a git-ignored `.team/` folder at the project root:
 
 ```
-.team/                       (git-ignored)
+.team/
 ├── facts.md                 verified findings: fact, evidence, date, run
-├── roles/<role>.md          project roles (override the shared library)
+├── roles/<role>.md          roles saved for this project
 ├── runs/<date>-<team>/      tasks.md · prompts/ · reports/ · status/ · synthesis.md
-└── worktrees/               build-run worktrees
+└── worktrees/               one per teammate on code-editing runs
 ```
 
-Only conclusions and pointers are stored: never secrets, PII, or raw data. A shared role library in `~/.claude/team/roles/` can be synced across machines; `team.sh roles` lists what is available and how each copy differs.
+It stores conclusions and pointers only, never secrets or raw data.
 
-## Where teammates appear
+## Contributing
 
-- **cmux (default, recommended).** Your tab splits: you and the lead on the left, teammates in a two-column grid on the right. Finished teammates close. Install from [cmux.dev](https://cmux.dev).
-- **tmux (fallback).** Used when you run `/team` inside tmux but not cmux. The grid is the same, but the monitor is lighter: it can't show waiting or idle states, there is no sidebar pill, and clicking a row needs tmux's `mouse on` (the number keys always work).
-- **`--inline`.** No panes. Teammates run as subagents inside your session, so no cmux or tmux is needed.
-
-UI checks run in Google Chrome through the Chrome DevTools MCP.
-
-## Good to know
-
-- **Cost scales with team size.** Every teammate is a full Claude session with its own context window. Two or three sharp roles beat five vague ones.
-- **Permission prompts appear in the teammate's own pane.** A teammate's questions go to the lead instead, which relays them to you in one place.
-- **Later challenge rounds resume.** A finished teammate's session is resumed when it is still recorded. Otherwise a fresh teammate reads its earlier report.
-- **First time in a folder**, each pane may show Claude's workspace-trust prompt.
-- Tested on macOS with cmux.
-
-## Documentation
-
-- [HELP.md](HELP.md) (`/team --help`): options, defaults, model choice, and monitor keys.
-- [SKILL.md](SKILL.md): the lead's procedure, step by step.
-- [teammate-rules.md](teammate-rules.md): what every teammate is told.
-- [git-practices.md](git-practices.md): commits, PR size, and `gh` on build runs.
+Only `skills/team/` ships. The lead's procedure is in [SKILL.md](skills/team/SKILL.md), the rules every teammate gets are in [teammate-rules.md](skills/team/references/teammate-rules.md), and commit and PR rules are in [git-practices.md](skills/team/references/git-practices.md). `tests/`, `CLAUDE.md` and `.githooks/` stay in the repo for development. Read [CLAUDE.md](CLAUDE.md) before changing anything: each fact has one owner file, and it lists the test suites to run before a merge.
 
 ## License
 
