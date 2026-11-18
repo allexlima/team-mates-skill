@@ -12,7 +12,7 @@
 #   _mux_close <backend> <ref> -> 0 closed or already gone; else prints the error, returns 1
 #   _mux_titles                -> "<ref>TAB<title>TAB<type>" for every live surface/pane
 #   _mux_focus <backend> <ref> -> brings a tmux pane forward (cmux focus stays in team.sh show)
-# Requires team.sh: _require_cmux, _surface_titles, $sub (for messages).
+# Requires team.sh: _require_cmux, _surface_titles, _reg_dir, $sub (for messages).
 
 _tmux() { tmux ${TEAM_TMUX_SOCKET:+-L "$TEAM_TMUX_SOCKET"} "$@"; }
 
@@ -66,6 +66,12 @@ _mux_open() {
       echo "$out" ;;
     *)
       [ "$anchor" != - ] || anchor=$CMUX_SURFACE_ID
+      # cmux types --command into the new pane's tty, whose input line is cut at 1024 bytes
+      # (MAX_CANON), so a long spawn command lost its tail (--model, the prompt). Type a short
+      # launcher instead; the full command lives in a file beside the registry.
+      local launch; launch="$(_reg_dir)/team-$title.launch.sh"
+      printf '%s\n' "$cmd" > "$launch" || return 1
+      cmd="bash $(printf %q "$launch")"
       case $lay in
         tab) out=$(cmux new-surface --type terminal --workspace "$CMUX_WORKSPACE_ID" --command "$cmd" --focus false) || return 1 ;;
         right) out=$(cmux new-split right --surface "$anchor" --command "$cmd" --focus false) || return 1 ;;

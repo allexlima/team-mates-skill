@@ -28,7 +28,9 @@ _reset_logs
 #   CMUX_TREE_SURFACES=...  — tab-sep "ref\ttitle\n..." lines for tree --all --json output
 cat > "$W/bin/cmux" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$CMUX_LOG"
+# A pane's --command is `bash <launch file>`; log the file's text after " :: " so greps see the claude command.
+log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(cat "${a#bash }")"; prev="$a"; done
+printf '%s\n' "$log" >> "$CMUX_LOG"
 n=$(wc -l < "$CMUX_LOG" 2>/dev/null || echo 1)
 case "$1" in
   ping) echo "${CMUX_PING_REPLY:-PONG}" ;;
@@ -216,6 +218,27 @@ _mkrun() {
   grep -q '^# Teammate working rules' "$TEAM_REG_DIR/team-$TM-role2.sysprompt.md" 2>/dev/null \
     && pass "spawn: system prompt includes references/teammate-rules.md" \
     || fail "spawn: system prompt includes references/teammate-rules.md" "sprc=$sprc"
+}
+
+# ══════════════════════════════════════════════════════════════════
+# T8/T9 — cmux types --command into the new pane's tty, whose input line is cut at 1024 bytes
+# (macOS MAX_CANON). A long spawn command lost the system prompt, --model and the prompt.
+# The pane must get a short launcher; the launcher must still carry the full claude command.
+# ══════════════════════════════════════════════════════════════════
+{
+  seg=$(printf 'deep%.0s' {1..20}); R="$W/$seg/$seg/$seg/$seg"; _mkgit "$R"   # ~330-char dir, used twice in the command
+  pf="$R/p.md"; printf 'go\n' > "$pf"
+  TM="t8$$"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" longrole "$pf" sonnet) >/dev/null 2>&1 && sprc=0 || sprc=$?
+  line=$(grep -E '^new-split|^new-surface' "$CMUX_LOG" | tail -1)
+  typed=${line#*--command }; typed=${typed%% --focus*}
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  [ "${#typed}" -lt 1024 ] && pass "T8: pane --command stays under the 1024-byte tty limit (${#typed})" \
+    || fail "T8: pane --command stays under the 1024-byte tty limit" "len=${#typed} sprc=$sprc"
+  [[ $line == *" :: "*"--model sonnet"*'$(cat '*"p.md)"* ]] \
+    && pass "T8/T9: launcher carries --model and the prompt" \
+    || fail "T8/T9: launcher carries --model and the prompt" "line=${line:0:300}"
 }
 
 # ══════════════════════════════════════════════════════════════════

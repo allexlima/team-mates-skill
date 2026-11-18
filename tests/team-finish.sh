@@ -23,7 +23,9 @@ CMUX_LOG="$W/cmux.log"; : > "$CMUX_LOG"
 # (its content is logged at close-surface time, to prove the marker is written BEFORE the close).
 cat > "$W/bin/cmux" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$CMUX_LOG"
+# A pane's --command is `bash <launch file>`; log the file's text after " :: " so greps see the claude command.
+log="$*"; prev=""; for a; do [ "$prev" = --command ] && [ -f "${a#bash }" ] && log+=" :: $(cat "${a#bash }")"; prev="$a"; done
+printf '%s\n' "$log" >> "$CMUX_LOG"
 n=$(wc -l < "$CMUX_LOG" | tr -d ' ')
 surf=""; prev=""
 for a; do [ "$prev" = "--surface" ] && surf="$a"; prev="$a"; done
