@@ -1,9 +1,4 @@
 .team/
 .DS_Store
 CLAUDE.local.md
-.claude-flow/
-.isaac/
-.swarm/
-ruvector.db
-.superpowers/
 __pycache__/

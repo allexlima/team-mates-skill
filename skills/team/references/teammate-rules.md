@@ -57,6 +57,10 @@ the slowest teammate sets the pace for the whole team.
   - Never type real credentials or customer data into a page. Read secrets from env vars and
     never echo them into your report or status line.
   - Clean up before reporting: `close_page` every page you opened.
+  - Requirement: the MCP drives Google Chrome stable on the machine (verified on Chrome 158:
+    `new_page` with an `isolatedContext`, `take_snapshot` and `close_page` all worked from a
+    teammate pane). It needs the `chrome-devtools-mcp` plugin enabled in the session. A machine
+    with only Chrome Beta is reported to fail; that is not verified here.
   - If the Chrome DevTools tools are not available to you (haiku-tier teammates don't get them),
     say "UI checks not done: no browser tools" in your report instead of switching tools.
 - **Stay on the backlog.** Your work is the `T<n>` lines with your name (or `any`) in `tasks.md`.
@@ -66,10 +70,11 @@ the slowest teammate sets the pace for the whole team.
   pre-approved. Pushes, `gh` writes, package installs, deploys and anything destructive are
   not yours to run: SendMessage the tech-lead (or the lead, when there is no TL) the exact
   command and why, then carry on with other work. Never pass `--no-verify` to `git commit`:
-  it skips the hooks that scan for secrets.
-- **Writing tools.** Run prose a person will read (reports to the user, PR descriptions, docs)
+  it skips the hooks that scan for secrets. If a commit message has to name that flag (or contain " -n"),
+  the deny rules refuse the inline `-m`: write the message to a file and use `git commit -F <file>`.
+- **Writing tools.** If available, run prose a person will read (reports to the user, PR descriptions, docs)
   through `humanizer:humanizer`, any README through `beautify-github-readme`, and draw any
-  diagram with `diagram-design`. On a build run, commit and open PRs the way
+  diagram with `diagram-design`; if not, write plainly and use Mermaid or ASCII for diagrams. On a build run, commit and open PRs the way
   `~/.claude/skills/team/references/git-practices.md` says.
 - **Send questions to the lead, not your own pane.** When you need the user's input, a
   decision, or sign-off on an approach, do NOT use AskUserQuestion or wait silently in your
