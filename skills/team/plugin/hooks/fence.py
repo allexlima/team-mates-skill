@@ -20,7 +20,9 @@ import sys
 WRAPPERS = {"command", "exec", "time", "nice", "nohup", "builtin", "env", "export", "timeout", "sudo"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
 GIT_VALUE_OPTS = {"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix"}
-WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after"}
+WRAPPER_VALUE_LONG = {"--unset", "--chdir", "--split-string", "--adjustment", "--signal", "--kill-after",
+                      "--user", "--group", "--host", "--prompt", "--role", "--type", "--close-from",
+                      "--other-user", "--chroot", "--command-timeout"}
 # per wrapper, a short-option cluster ending in one of these letters takes a value
 WRAPPER_VALUE_SHORT = {"env": "uCSP", "nice": "n", "exec": "a", "timeout": "sk", "sudo": "ugCDhprtUTR", "time": "of"}
 COMMIT_VALUE_FLAGS = set("mFCctS")  # short commit options that take a value
@@ -59,7 +61,7 @@ def strip_comments(s):
             q = None if c == q else q
         elif c in "'\"":
             q = c
-        elif c == "#" and (not out or out[-1][-1] in " \t\n;&|()"):
+        elif c == "#" and (not out or (len(out[-1]) == 1 and out[-1] in " \t\n;&|()")):
             j = s.find("\n", i)
             i = len(s) if j < 0 else j
             continue
@@ -105,10 +107,16 @@ def git_problem(argv):
         return None
     sub = argv[i]
     if sub == "config":
-        args, k = argv[i + 1:], 0
-        while k < len(args) and (args[k].startswith("-") or args[k] in CONFIG_SUBCMDS):
-            k += 2 if args[k] in CONFIG_VALUE_OPTS else 1
-        if k < len(args) and hookspath(args[k]) and not CONFIG_SAFE & set(args):
+        args, k, pos = argv[i + 1:], 0, []
+        while k < len(args):
+            a = args[k]
+            if a in CONFIG_VALUE_OPTS:
+                k += 1
+            elif not (a.startswith("-") or a in CONFIG_SUBCMDS):
+                pos.append(a)
+            k += 1
+        names = pos[:2] if {"rename-section", "--rename-section"} & set(args) else pos[:1]
+        if any(map(hookspath, names)) and not CONFIG_SAFE & set(args):
             return HOOKS
     for a in argv[i + 1:]:
         if a == "--":

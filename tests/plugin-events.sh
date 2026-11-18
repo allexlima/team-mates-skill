@@ -153,6 +153,10 @@ deny	sudo -u root git -C . commit -n
 deny	sudo -n git commit --no-verify
 deny	sudo -S git commit -n
 deny	sudo -k git commit -n
+deny	sudo --user root git commit --no-verify
+deny	git commit -m a\ #x --no-verify
+deny	git config --rename-section foo include
+deny	git config rename-section foo includeIf.gitdir:/
 deny	/usr/bin/time -a -o f git commit --no-verify
 deny	git commit -m a#b --no-verify
 deny	git commit -m "#12 fix" --no-verify
