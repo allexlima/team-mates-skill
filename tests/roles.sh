@@ -24,8 +24,8 @@ secret='(dapi|dose)[0-9a-f]{32}|gh[pousr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_
 _secret_lines() { sed -E 's/(^|[^A-Za-z0-9._%+-])git@/\1git /g' | grep -nEi -- "$secret"; }
 
 # Source the library under test
-# shellcheck source=../lib/roles.sh
-. "$HERE/lib/roles.sh"
+# shellcheck source=../skills/team/scripts/lib/roles.sh
+. "$HERE/skills/team/scripts/lib/roles.sh"
 
 # ---------------------------------------------------------------------------
 # Helpers

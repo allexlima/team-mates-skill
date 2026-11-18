@@ -6,7 +6,7 @@
 # USAGE: bash tests/tmux.sh   (or TEAM_SH=/path/to/team.sh bash tests/tmux.sh)
 set -uo pipefail
 
-TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/team.sh}"
+TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.sh}"
 W=$(mktemp -d); trap 'chmod -R u+w "$W" 2>/dev/null; rm -rf "$W"' EXIT
 fails=0; passes=0
 pass() { echo "PASS  $1"; passes=$((passes+1)); }

@@ -4,7 +4,7 @@
 # no real pane is ever opened or closed. Prints PASS/FAIL per case; exit 1 on any FAIL.
 #   bash tests/team-cli.sh
 set -euo pipefail
-TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/team.sh}"
+TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.sh}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0
 pass() { echo "PASS  $1"; }

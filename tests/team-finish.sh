@@ -9,7 +9,7 @@
 # fixtures never share state; the summary counts come from the pass/fail calls, not from grep.
 set -uo pipefail   # no -e: each case reports PASS/FAIL itself
 
-TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/team.sh}"
+TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.sh}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0
 pass() { echo "PASS  $1"; passes=$((passes+1)); }

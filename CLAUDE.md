@@ -1,6 +1,7 @@
 # CLAUDE.md — contributor guardrails for the /team skill
 
-This repo is one skill (`SKILL.md`), one orchestration script (`team.sh`), and
+This repo is one skill (`skills/team/SKILL.md`), one orchestration script
+(`skills/team/scripts/team.sh` + `scripts/lib/`), and
 user docs (`HELP.md`, `README.md`). Its recurring failure mode is **doc drift** —
 the same fact stated three different ways across those files. The rule below keeps
 one owner per fact; everything else points to it or quotes it verbatim.
@@ -26,7 +27,7 @@ quote it word-for-word — they never restate it in their own words.
 
 1. Edit the **owner** file above.
 2. Grep the repo for the old wording and update or delete the copies.
-3. Run `bash team.sh doccheck` — it flags retired drift phrases
+3. Run `bash skills/team/scripts/team.sh doccheck` — it flags retired drift phrases
    (`inherit the lead`, `stacked`, `3–5`, `team.sh park`, `cmux browser`, `cmux-only` and
    `cmux is required`), confirms every subcommand is documented in the `team.sh` header,
    and confirms every `--flag` in `SKILL.md`'s argument-hint is explained in `HELP.md`.
@@ -35,7 +36,7 @@ quote it word-for-word — they never restate it in their own words.
 Deterministic checks belong in a hook, not prose. `.githooks/pre-commit` runs
 `doccheck`; enable it with `git config core.hooksPath .githooks`. Where a global
 `core.hooksPath` is already set (e.g. a Databricks secret-scanning hook —
-`git config --get core.hooksPath`), don't override it: run `bash team.sh doccheck`
+`git config --get core.hooksPath`), don't override it: run `bash skills/team/scripts/team.sh doccheck`
 in CI or as a manual pre-push check so you keep the global hook.
 
 ## The full gate set
@@ -45,15 +46,15 @@ from the main checkout with `TEAM_MEMBER` unset (an inherited value makes
 `rev4-3` fail for the wrong reason):
 
 ```
-bash -n team.sh lib/*.sh
-bash team.sh doccheck
+bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
+bash skills/team/scripts/team.sh doccheck
 bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
-bash team.sh facts-lint       # CHECK rows are expected when cited files changed
+bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 
 Add a new suite to this list in the same commit that adds the file, or the next

@@ -125,7 +125,7 @@ _team_allow+=",Bash(git commit:*)"
 _team_allow+=",Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*)"
 _team_allow+=",Bash(bash -n:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(make test:*),Bash(npm test:*)"
 _team_allow+=",Bash(ruff:*),Bash(cmux notify:*),Bash(no-mistakes axi:*)"
-_team_allow+=",Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/team.sh status:*)"
+_team_allow+=",Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bash(bash ~/.claude/skills/team/scripts/team.sh status:*)"
 _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
@@ -650,14 +650,14 @@ fi
 if [ "$sub" = doccheck ]; then
   rc=0
   for pat in 'inherit the lead' 'stacked' '3–5' '2–5' 'as much as possible' 'team.sh park' 'cmux browser' 'cmux-only' 'cmux is required'; do
-    grep -rnF -- "$pat" "$here/SKILL.md" "$here/HELP.md" "$here/README.md" 2>/dev/null && rc=1
+    grep -rnF -- "$pat" "$here/../SKILL.md" "$here/../references/HELP.md" "$here/../../../README.md" 2>/dev/null && rc=1
   done
   hdr=$(sed '/^set -euo pipefail/q' "$here/team.sh")
   for s in $subs; do
     printf '%s\n' "$hdr" | grep -qw -- "$s" || { echo "doccheck: subcommand '$s' not documented in the header" >&2; rc=1; }
   done
-  for fl in $(sed -n '4p' "$here/SKILL.md" | grep -oE '\-\-[a-z-]+'); do
-    grep -qF -- "$fl" "$here/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
+  for fl in $(sed -n '4p' "$here/../SKILL.md" | grep -oE '\-\-[a-z-]+'); do
+    grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
   done
   [ "$rc" = 0 ] && echo "doccheck: ok"
   exit "$rc"
@@ -888,7 +888,7 @@ if [ "$tier" = haiku ]; then
   allow+=",Edit(/$rundir/reports/$role.md),Edit(/$rundir/tasks.md),Edit(/$rundir/status/$role.txt)"
   allow+=",Bash(ls:*),Bash(wc:*)"
   # Every spawn prompt asks for facts-lint; a rule matches the command text as typed, so both forms.
-  allow+=",Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash $here/team.sh facts-lint:*)"
+  allow+=",Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bash(bash $here/team.sh facts-lint:*)"
   # Only `git status`: diff/log/show take --output=<file> (writes, live-probed); read code with Read/Grep/Glob.
   allow+=",Bash(git status:*)"
   # teammate-rules.md has every teammate `cmux notify --title ... --body ...` when it reports or needs
@@ -985,7 +985,7 @@ os.replace(tmp, p)
 PY
 fi
 cavefile="$HOME/.agents/skills/caveman/SKILL.md"
-rulesfile="$here/teammate-rules.md"
+rulesfile="$here/../references/teammate-rules.md"
 # claude keeps only the LAST --append-system-prompt-file, so these are concatenated
 # rather than passed as two flags: the always-on teammate rules (parallelise with
 # subagents, verify what they return) plus the caveman style unless --no-caveman.

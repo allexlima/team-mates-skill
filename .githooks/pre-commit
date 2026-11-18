@@ -9,4 +9,4 @@
 # hook — check with `git config --get core.hooksPath`), do NOT override it: that
 # would disable the global hook for this repo. Run `bash team.sh doccheck` in CI
 # or as a manual pre-push check instead.
-exec bash "$(git rev-parse --show-toplevel)/team.sh" doccheck
+exec bash "$(git rev-parse --show-toplevel)/skills/team/scripts/team.sh" doccheck

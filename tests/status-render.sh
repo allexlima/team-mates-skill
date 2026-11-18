@@ -11,7 +11,7 @@
 # No -e: every case reports PASS/FAIL itself, so a failing command must not abort the run.
 set -uo pipefail
 
-TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/team.sh}"
+TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.sh}"
 LIB="$(dirname "$TEAM_SH")/lib/status.sh"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0

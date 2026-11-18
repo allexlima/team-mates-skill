@@ -9,7 +9,7 @@
 # BASE VERIFICATION for rev4 cases: must FAIL on base 61d4fcd.
 set -euo pipefail
 
-TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/team.sh}"
+TEAM_SH="${TEAM_SH:-$(cd "$(dirname "$0")/.." && pwd)/skills/team/scripts/team.sh}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0
 pass() { echo "PASS  $1"; passes=$((passes+1)); }
@@ -212,6 +212,10 @@ _mkrun() {
   rm -f "$TEAM_REG_DIR/team-$TM.tabs"
   [ "$lines" -ge 2 ] && pass "bug#2e: spawn appends to existing registry" \
     || fail "bug#2e: spawn appends to existing registry" "lines=$lines sprc=$sprc"
+  # spawn skips a missing rules file silently, so assert the moved references/ path is read
+  grep -q '^# Teammate working rules' "$TEAM_REG_DIR/team-$TM-role2.sysprompt.md" 2>/dev/null \
+    && pass "spawn: system prompt includes references/teammate-rules.md" \
+    || fail "spawn: system prompt includes references/teammate-rules.md" "sprc=$sprc"
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -1062,7 +1066,7 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   a=$(_allow_of); miss=
   for e in Read Glob Grep Edit Write Agent SendMessage ListAgents 'Bash(git status:*)' 'Bash(git diff:*)' \
       'Bash(git log:*)' 'Bash(git add:*)' 'Bash(git commit:*)' \
-      'Bash(bash ~/.claude/skills/team/team.sh facts-lint:*)' 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__*'; do
+      'Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*)' 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__*'; do
     case ",$a," in *",$e,"*) ;; *) miss+=" $e" ;; esac
   done
   # Prefix rules also approve every flag: these have destructive forms (stash drop, branch -D,
@@ -1075,7 +1079,7 @@ _allow_of() {  # the --allowedTools value in the last logged spawn command, shel
   _reset_logs
   (cd "$R" && bash "$TEAM_SH" spawn "$TM" h "$RUNP/prompts/h.md" system.ai.claude-haiku-4-5) >/dev/null 2>&1 || true
   a=$(_allow_of)
-  want="Read,Glob,Grep,SendMessage,ListAgents,Edit(/$RUNP/reports/h.md),Edit(/$RUNP/tasks.md),Edit(/$RUNP/status/h.txt),Bash(ls:*),Bash(wc:*),Bash(bash ~/.claude/skills/team/team.sh facts-lint:*),Bash(bash $(dirname "$TEAM_SH")/team.sh facts-lint:*),Bash(git status:*),Bash(cmux notify --title:*)"
+  want="Read,Glob,Grep,SendMessage,ListAgents,Edit(/$RUNP/reports/h.md),Edit(/$RUNP/tasks.md),Edit(/$RUNP/status/h.txt),Bash(ls:*),Bash(wc:*),Bash(bash ~/.claude/skills/team/scripts/team.sh facts-lint:*),Bash(bash $(dirname "$TEAM_SH")/team.sh facts-lint:*),Bash(git status:*),Bash(cmux notify --title:*)"
   rm -f "$TEAM_REG_DIR/team-$TM.tabs"
   [ "$a" = "$want" ] && pass "perm-2: haiku-tier allowlist is unchanged" \
     || fail "perm-2: haiku allowlist" "got=$a want=$want"
