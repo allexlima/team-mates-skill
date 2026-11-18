@@ -1095,7 +1095,6 @@ else
   sid=$(python3 -c 'import uuid; print(uuid.uuid4())')
   cmd="cd $(printf %q "$dir") && $envs claude --session-id $sid --name $(printf %q "$title") --permission-mode $(printf %q "$pmode")"
 fi
-# One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
 if [ "$tier" != haiku ]; then
   # A build run (worktree, also when resumed) edits only its worktree and its run-dir files. Edit rules
   # are checked against both the path asked for and the file it resolves to, so each path is listed
