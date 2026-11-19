@@ -302,7 +302,8 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   and falls back to the classic pane if it cannot start. `TEAM_MONITOR_UI=classic` keeps
   the classic pane; `TEAM_MONITOR_THEME` picks a Textual theme (default `tokyo-night`);
   `TEAM_CONTEXT_WINDOW` sets the context size the % is measured against (default 200k, or
-  1M for a `[1m]` model). Try it with no team: `python3 scripts/monitor_tui.py --demo`.
+  1M for a `[1m]` model). Try it with no team: `python3 scripts/monitor_tui.py --demo` (or
+  `uv run --script scripts/monitor_tui.py --demo` when only uv is installed).
 - Say "shut down the team" to close all teammate panes/tabs (the run record stays;
   clean worktrees are removed, branches and PRs stay).
 

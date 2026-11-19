@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["textual>=1.0"]
+# dependencies = ["textual>=1.0,<9"]  # tested on 8.2
 # ///
 """Team-mates monitor: a full-screen TUI for a /team run.
 

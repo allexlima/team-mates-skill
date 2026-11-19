@@ -35,6 +35,7 @@ case "$1" in
   --version) echo "cmux 0.65.0 (1) stub" ;;
   identify)
     surf=""; prev=""; for a; do [ "$prev" = "--surface" ] && surf="$a"; prev="$a"; done
+    case " ${CMUX_NULL_REFS:-} " in *" $surf "*) echo '{"caller":null}'; exit 0 ;; esac
     case " ${CMUX_GONE_REFS:-} " in
       *" $surf "*) echo '{"caller":{"pane_ref":null}}' ;;
       *) echo "{\"caller\":{\"pane_ref\":\"pane:$surf\",\"surface_ref\":\"${surf:-surface:lead}\"}}" ;;
@@ -113,6 +114,11 @@ cpct=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j2 2>/
 jpct=$(cd "$G" && bash "$TEAM_SH" status --json j2 2>/dev/null | python3 -I -c 'import json,sys; s=json.load(sys.stdin)["summary"]; print(s["bar_pct"], s["bar_est"])')
 [ "$cpct" = "33%" ] && [ "$jpct" = "33 False" ] && pass "B1: classic bar $cpct = json bar_pct (the TUI renders it verbatim)" \
   || fail "B1: bar % mismatch" "classic=$cpct json=$jpct"
+
+# ═══ J5 — `"caller": null` is UNKNOWN (what _alive/reap treat as alive), not DEAD ═══
+st=$(cd "$G" && CMUX_NULL_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev/null \
+  | python3 -I -c 'import json,sys; m={t["title"]: t["state"] for t in json.load(sys.stdin)["teammates"]}; print(m["j1-ui"])')
+[ "$st" = UNKNOWN ] && pass "J5: a null caller leaves the row UNKNOWN, matching _alive" || fail "J5: null caller" "$st"
 
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
 frame=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)

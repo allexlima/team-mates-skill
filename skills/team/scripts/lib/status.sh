@@ -266,8 +266,9 @@ _st_row() {
     if [ "$idrc" != 0 ]; then
       case $idout in *not_found*) alive=0 ;; esac
     else
-      # caller object only (a null caller means the surface is gone); no python start per row
-      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(null|\{[^}]*\}) ]]; then
+      # caller object only, no python start per row. An object without a pane_ref means the
+      # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
+      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
         pp=gone
         [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
       fi
@@ -977,7 +978,7 @@ _st_tui_pick() {
   _ST_TUI=()
   local py="$here/monitor_tui.py"
   [ "${TEAM_MONITOR_UI:-auto}" != classic ] && [ -f "$py" ] || return 1
-  if python3 -c 'import sys, textual; sys.exit(int(textual.__version__.split(".")[0]) < 1)' 2>/dev/null; then
+  if python3 -c 'import sys, textual; sys.exit(not 1 <= int(textual.__version__.split(".")[0]) <= 8)' 2>/dev/null; then
     _ST_TUI=(python3 "$py")
   elif command -v uv >/dev/null 2>&1; then
     _ST_TUI=(uv run --quiet --script "$py")
