@@ -55,9 +55,9 @@ check "bad event name: no-op" '[ "$(wc -l <"$E")" = "$n" ]'
 ln -s "$W/target" "$W/events/link.jsonl"
 printf '{}' | TEAM_EVENTS_FILE="$W/events/link.jsonl" sh "$H" Stop
 check "symlink target refused" '[ ! -e "$W/target" ]'
-big=$(head -c 300000 /dev/zero | tr '\0' a)
-printf '{"tool_name":"Write","tool_input":{"content":"%s"}}' "$big" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
-check "large payload drained, line written" 'tail -1 "$E" | grep -q "\"tool\":\"Write\""'
+big=$(python3 -I -c "print('\u2014'*3000+'a'*300000, end='')")
+printf '{"tool_name":"Write","tool_input":{"content":"%s"}}' "$big" | LC_ALL=en_US.UTF-8 TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "large multi-byte payload cut mid-character: drained, line written" 'tail -1 "$E" | grep -q "\"tool\":\"Write\""'
 
 check "plugin.json names the plugin" 'python3 -I -c "import json,sys;assert json.load(open(sys.argv[1]))[\"name\"]==\"team-mates-events\"" "$P/.claude-plugin/plugin.json"'
 check "hooks.json: each event calls event.sh with its own name" 'python3 -I - "$P/hooks/hooks.json" <<'"'"'PY'"'"'
@@ -166,6 +166,8 @@ deny	sudo -n git commit --no-verify
 deny	sudo -S git commit -n
 deny	sudo -k git commit -n
 deny	sudo --user root git commit --no-verify
+deny	doas git commit -n
+deny	doas -u root git -C . commit --no-verify
 deny	git commit -m a\ #x --no-verify
 deny	git config --rename-section foo include
 deny	git config rename-section foo includeIf.gitdir:/
@@ -188,6 +190,7 @@ allow	git config user.name alias.bob
 allow	git config --unset core.hooksPath
 allow	git -c user.name=include commit -m ok
 allow	sudo ls
+allow	doas ls
 CASES
 check "writer is executable" '[ -x "$H" ]'
 

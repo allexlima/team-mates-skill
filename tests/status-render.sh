@@ -149,8 +149,9 @@ for cols in 20 30 40 50 72; do
   [ "${mw:-999}" -le "$cols" ] || bad+=" cols=$cols:maxwidth=$mw"
   if [ "$cols" -ge 40 ]; then
     # alert rows keep their state WORD (not just the glyph), every table row keeps its AGE
+    # (grep runs in UTF-8 like the frame: under the C locale `.` is one byte and misses the multi-byte glyph)
     grep -E 'r_abc' <<<"$f" | sed -n '1,2p' | grep -qiE 'waiting|dead' || bad+=" cols=$cols:alert-word-lost"
-    [ "$(grep -cE '^  . r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
+    [ "$(LC_ALL=$UTF8_LOC grep -cE '^  . r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
   fi
 done
 [ -z "$bad" ] && pass "G7: widths 20-72 with 18-char roles + CJK: no line wider than the terminal; alert rows keep the state word and table rows their AGE at >=40 cols (decision 63)" \
@@ -699,17 +700,23 @@ if pid == 0:
     os.execvp('bash', ['bash', os.environ['TEAM_SH'], 'status', '--watch', 'aq'])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 100, 0, 0))
 time.sleep(3)
+tail = b''
 for _ in range(60):
     try: os.write(fd, b'q')   # re-send: a key typed between two reads waits for the next one
     except OSError: pass
     while select.select([fd], [], [], 0.5)[0]:   # drain, or a full tty buffer blocks the monitor
         try:
-            if not os.read(fd, 65536): break
+            d = os.read(fd, 65536)
+            if not d: break
+            tail = (tail + d)[-500:]
         except OSError: break
     r, st = os.waitpid(pid, os.WNOHANG)
     if r:
         print(os.waitstatus_to_exitcode(st)); sys.exit(0)
-os.kill(pid, 9); print('hung')
+# Evidence for the next flake: what the monitor last drew and what it was doing (this case hung once in a busy full run).
+import subprocess
+ps = subprocess.run(['ps', '-o', 'pid,ppid,stat,etime,command', '-g', str(os.getpgid(pid))], capture_output=True, text=True).stdout
+os.kill(pid, 9); print('hung\nlast pty output: %r\n%s' % (tail.decode('utf-8', 'replace'), ps))
 PY
 )
 [ "$aqrc" = 0 ] && pass "AQ1: q in the tty monitor exits 0" || fail "AQ1: q exit status" "rc=[$aqrc]"

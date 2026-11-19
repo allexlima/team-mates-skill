@@ -2,7 +2,16 @@
   <img src="./assets/readme/hero.svg" width="100%" alt="Team-mates, the /team skill for Claude Code: the lead pane on the left, teammate panes in a two-column grid, and a monitor showing overall progress, a team ETA, and one teammate that needs you. Illustrative run.">
 </p>
 
-**Team-mates** gives Claude Code a `/team` command. It runs a small team of Claude Code sessions on one task, each teammate a full interactive `claude` session in its own pane. Your session becomes the lead: it plans the roles with you, passes findings between teammates so they can challenge each other, and writes up what survives. It needs only standard Claude Code features (interactive sessions, cross-session messaging, subagents), so it works where the experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature is turned off.
+**Team-mates** gives Claude Code a `/team` command. Your session becomes the lead of a small team of Claude Code sessions, each in its own pane. The lead plans the roles with you, passes findings between teammates so they can challenge each other, and writes up what survives. It uses only standard Claude Code features (interactive sessions, cross-session messaging, subagents), so it works where the experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature is turned off.
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#try-it">Try it</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#the-monitor">Monitor</a> ·
+  <a href="#project-memory">Memory</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 ## Install
 
@@ -36,6 +45,10 @@ Update with `git -C ~/team-mates-skill pull`.
 /team add retry logic to the ingestion job and cover it with tests --autoroles
 ```
 
+<p align="center">
+  <img src="./assets/readme/help.gif" width="80%" alt="A terminal printing the usage and options block of /team --help: --roles, --rounds, --autoroles, --model, --tabs, --tmux, --no-gate, --no-caveman, --autoclose, --inline, --no-monitor, --help.">
+</p>
+
 With `--autoroles`, the lead proposes roles from your repo and waits for your OK before starting anyone. Every flag and default is in `/team --help` ([HELP.md](skills/team/references/HELP.md)). Say **"shut down the team"** when you're done.
 
 Each teammate is a full Claude session with its own context window, so cost grows with team size. Two or three sharp roles usually beat five vague ones.
@@ -56,13 +69,21 @@ When the task edits code in a git repo, each teammate also gets its own worktree
 
 ## The monitor
 
-A status pane opens while the team runs. It shows overall task progress, a team ETA, and a **NEEDS YOU** block that pins any teammate needing attention, such as a dead session or one idle while ready work has no owner. `/team --help` lists every state. Teammates report their own percentages, so treat the progress and ETA as rough estimates.
+A status pane opens next to the teammates while the team runs. With [Textual](https://textual.textualize.io) importable (or `uv` installed) it is a full-screen TUI: a card per live teammate, the backlog with a progress bar and ETA per task, an event log, and a **NEEDS YOU** block for anything that wants your attention. Otherwise you get a plain-text pane with the same states. `/team --help` ([HELP.md](skills/team/references/HELP.md)) lists the states, keys and settings.
 
-When [Textual](https://textual.textualize.io) or [uv](https://docs.astral.sh/uv/) is installed, the pane is a full-screen TUI: a card per teammate with its own ETA, the tool call in flight and its context use, a backlog forecast that follows each task's dependencies, an event log, and a detail view with each teammate's report. Try it without a team: `python3 ~/.claude/skills/team/scripts/monitor_tui.py --demo` (with uv alone: `uv run --script ~/.claude/skills/team/scripts/monitor_tui.py --demo`).
+<p align="center">
+  <img src="./assets/readme/monitor.gif" width="100%" alt="The full-screen monitor playing a synthetic team: teammate cards with progress bars, a backlog table filling in with ETAs, and an event log scrolling.">
+</p>
+<p align="center"><sub>Illustrative demo: a synthetic team played by <code>monitor_tui.py --demo</code>, not a real run. Re-record with <code>vhs assets/readme/tapes/monitor.tape</code>.</sub></p>
+
+Teammates report their own percentages, so treat the progress and ETA as rough estimates. Try the monitor without a team: `uv run --script ~/.claude/skills/team/scripts/monitor_tui.py --demo` (or `python3 ~/.claude/skills/team/scripts/monitor_tui.py --demo` with Textual installed).
 
 ## Project memory
 
-The skill keeps its state in a git-ignored `.team/` folder at the project root:
+The skill keeps its state in a git-ignored `.team/` folder at the project root. It stores conclusions and pointers only, never secrets or raw data.
+
+<details>
+<summary>What is in <code>.team/</code></summary>
 
 ```
 .team/
@@ -71,8 +92,7 @@ The skill keeps its state in a git-ignored `.team/` folder at the project root:
 ├── runs/<date>-<team>/      tasks.md · prompts/ · reports/ · status/ · synthesis.md
 └── worktrees/               one per teammate on code-editing runs
 ```
-
-It stores conclusions and pointers only, never secrets or raw data.
+</details>
 
 ## Contributing
 
