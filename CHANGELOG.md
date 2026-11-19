@@ -13,8 +13,15 @@ All notable changes to this project are recorded here. The format follows
 - `plugin/`, a session-only hook plugin whose `event.sh` appends one line per
   Claude Code event (time, event, tool name, notification type; never tool
   input) to `$TEAM_EVENTS_FILE`, and whose PreToolUse `fence.py` denies
-  edits outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. Nothing
-  loads it yet.
+  edits outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. `spawn`
+  loads it (`--plugin-dir`) for every teammate with a run dir, and warns on
+  stderr when there is none.
+- `clean` also removes finished teammates' scratch dirs and system prompts.
+
+### Fixed
+
+- `clean` no longer removes another team's build-run worktrees when one team's
+  name is a prefix of another's.
 
 ## [0.1.1] - 2026-11-18
 
