@@ -234,6 +234,9 @@ check "a main-thread event clears it" '[ "$(ev "$F" 314)" = "WORKING 0 -" ]'
 add '{"t":320,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":321,"ev":"PermissionRequest","tool":"Bash","sub":1}'
 add '{"t":322,"ev":"Notification","ntype":"permission_prompt"}'; add '{"t":330,"ev":"PostToolUse","tool":"Bash","sub":1}'
 check "the prompt's notification belongs to the subagent: its tool result clears both" '[ "$(ev "$F" 330)" = "WORKING 0 Agent" ]'
+: > "$F"; add '{"t":400,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":401,"ev":"PermissionRequest","tool":"Bash"}'
+for i in $(seq 1 300); do add '{"t":402,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":403,"ev":"PostToolUse","tool":"Read","sub":1}'; done
+check "600 subagent lines after a main PermissionRequest: still PERMISSION" '[ "$(ev "$F" 410)" = "PERMISSION 7 Bash" ]'
 ln -s "$F" "$W/link.jsonl"
 check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
 st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
@@ -263,6 +266,12 @@ check "row: open AskUserQuestion is WAITING with no notification (tmux)" '[ "$(f
 printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
 rec=$(row)
 check "row: 15 silent min, no open tool: stalled?" '[ "$(f 3)" = STALLED ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: measured IDLE 15 min old stays IDLE, not stalled?" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"SessionEnd"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: ENDED with a live pane is IDLE, not WORKING or stalled?" '[ "$(f 3)" = IDLE ] && [ "$(f 10)" = ENDED ]'
 rm -f "$RUN/events/q.jsonl"; rec=$(row)
 check "row: no log: old inference, dashes in event fields" '[ "$(f 3)" = STALLED ] && [ "$(f 10)" = - ] && [ "$(f 12)" = - ]'
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' q d1-q PERMISSION investigating x 1 - 30 2 PERMISSION 7 Bash > "$W/recs"

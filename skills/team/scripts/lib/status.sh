@@ -157,12 +157,13 @@ _st_state() {
 # are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
 # user too: it shows PERMISSION until the next subagent tool result or denial (subagents are
 # not told apart, so any subagent's clears it), or until any main-thread event.
-# Reads only the last 200 lines; the writer's fixed format lets awk parse it.
+# Reads only the last 2000 lines, so a burst of subagent tool calls cannot push the main
+# thread's PermissionRequest out of view; the writer's fixed format lets awk parse it.
 # ---------------------------------------------------------------------------
 _st_events() {
   local f=$1 now=$2
   [ -s "$f" ] && [ ! -L "$f" ] || return 0
-  tail -n 200 "$f" 2>/dev/null | awk -v now="$now" '
+  tail -n 2000 "$f" 2>/dev/null | awk -v now="$now" '
     function val(k,   s) { if (!match($0, "\"" k "\": *\"?[A-Za-z0-9_.:-]+")) return ""
       s = substr($0, RSTART, RLENGTH); sub(/^"[^"]*": *"?/, "", s); return s }
     { t = val("t") + 0; ev = val("ev"); if (ev == "" || t == 0) next
@@ -388,19 +389,20 @@ _st_row() {
   # Measured state from the plugin's event log (live rows only: a finished teammate's log is
   # history). It wins over the silence and notification inference above, under tmux too:
   # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
-  # a stall), idle comes from Stop/idle_prompt, and a permission request is its own state.
+  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
+  # waiting only from an open AskUserQuestion, and a permission request is its own state.
   local evs=- eva=- evt=- perm= _ev
   if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
     read -r evs eva evt <<<"$_ev"
-    idle= stalled=
+    idle= stalled= waiting=
     case $evs in
       PERMISSION) perm=1 ;;
-      IDLE) [ "$ms" = reported ] || idle=1 ;;
+      IDLE|ENDED) [ "$ms" = reported ] || idle=1 ;;
     esac
     # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
     [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
-      [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
     esac
   fi
 
@@ -413,7 +415,7 @@ _st_row() {
   elif [ "$state" = DEAD ] && [ -n "$rpt" ] && [ -f "$rpt" ]; then note="report safe; resume unavailable"
   fi
 
-  # Record contract: 9 TAB-separated fields, NONE of them empty. Tab is IFS
+  # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
