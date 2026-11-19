@@ -1136,6 +1136,8 @@ if [ "$rundir" != - ] && [ -f "$plugin/hooks/hooks.json" ]; then
   envs+=" TEAM_EVENTS_FILE=$(printf %q "$ev/$role.jsonl") TEAM_SCRATCH=$(printf %q "$scratch")"
   envs+=" TEAM_FENCE_ROOTS=$(printf %q "$dir:$rundir:$scratch")"
   plugarg=" --plugin-dir=$(printf %q "$(cd "$plugin" && pwd)")"
+elif [ "$rundir" = - ]; then
+  echo "no run dir: teammate runs without the event log and fence" >&2
 fi
 # Our own session id, recorded in the registry, so a later round can `claude --resume` it. A resumed
 # session keeps its id (live-probed). Permission mode and allowlist are passed again on resume; the

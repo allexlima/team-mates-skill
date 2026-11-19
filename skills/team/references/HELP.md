@@ -354,7 +354,8 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   haiku tier; they are refused on build runs.
 - A teammate with a run dir also loads the skill's `plugin/` folder for that session only
   (`--plugin-dir`; nothing is written to your settings, and your own hooks and cmux's still
-  run).
+  run). Without a run dir, spawn warns on stderr that the teammate runs without the event
+  log and fence.
   - Event log: one line per hook event (time, event, tool name, notification type) in
     `.team/runs/<run>/events/<role>.jsonl`. Tool input, prompts and messages are never recorded.
   - PreToolUse fence, enforced even in auto mode. It blocks Edit/Write/MultiEdit/

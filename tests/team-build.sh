@@ -1273,9 +1273,11 @@ _disallow_of() {
 
   # No run dir: no event log to write, so no plugin.
   pf3="$R/p.md"; printf 'prompt\n' > "$pf3"; _reset_logs
-  (cd "$R" && bash "$TEAM_SH" spawn "t28d$$" worker "$pf3" sonnet) >/dev/null 2>&1 || true
+  err=$( (cd "$R" && bash "$TEAM_SH" spawn "t28d$$" worker "$pf3" sonnet) 2>&1 >/dev/null || true)
   rm -f "$TEAM_REG_DIR/team-t28d$$.tabs"
   grep -q -- '--plugin-dir' "$CMUX_LOG" && fail "T28b: no run dir, no plugin" || pass "T28b: no run dir, no plugin"
+  case $err in *"no run dir: teammate runs without the event log and fence"*) pass "T28b: no run dir warns on stderr" ;;
+    *) fail "T28b: no run dir warns on stderr" "$err" ;; esac
 
   # clean removes the team's scratch dirs and system prompts, except a live teammate's;
   # a symlink planted under that name is never followed.
