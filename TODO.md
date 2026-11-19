@@ -20,6 +20,19 @@ Open items. Each one names where the work lives.
       `no-mistakes axi status` for the teammate's branch and treats a running gate as working.
       (2) needs no teammate cooperation but costs a call per teammate per poll.
 
+- [ ] `tests/status-render.sh` AC2 ("no self-close on transition") timed out when the gate's test
+      step ran it inside a no-mistakes worktree, and passed in a normal checkout. Cause not found
+      (reported by tm2-tui, not reproduced here). Run the suite from a worktree the gate created.
+
+- [ ] `tests/status-render.sh` AQ1 ("q in the tty monitor exits 0") hung once in four runs during a
+      busy full gate run (tm2-hooks): the pty driver saw no exit after 60 rounds of `q`. Not
+      reproduced: 10 of 10 passes with 14 CPU-burning processes. The test now prints the last 500
+      bytes of pty output and a `ps` snapshot when it hangs; read those on the next occurrence.
+      Ruled out: a lone `q` typed outside a `read` window. A single `q` sent at 1, 3 and 6 s, and
+      during a render slowed by 3 s of `cmux identify`, still exits 0. 8 of 8 full-suite runs and
+      10 of 10 isolated runs passed here, so the cause is probably load or cmux timing on a busy
+      machine.
+
 ## Shell lint
 
 - [ ] v0.2.0: clean up `shellcheck -S warning`. shellcheck 0.11 reports 12 findings at that level
