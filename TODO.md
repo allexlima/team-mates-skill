@@ -20,6 +20,10 @@ Open items. Each one names where the work lives.
       `no-mistakes axi status` for the teammate's branch and treats a running gate as working.
       (2) needs no teammate cooperation but costs a call per teammate per poll.
 
+- [ ] `tests/status-render.sh` AC2 ("no self-close on transition") timed out when the gate's test
+      step ran it inside a no-mistakes worktree, and passed in a normal checkout. Cause not found
+      (reported by tm2-tui, not reproduced here). Run the suite from a worktree the gate created.
+
 ## Shell lint
 
 - [ ] v0.2.0: clean up `shellcheck -S warning`. shellcheck 0.11 reports 12 findings at that level
