@@ -155,8 +155,8 @@ _st_state() {
 # Stop or SessionEnd: a long tool is running, so silence is not a stall.
 # A subagent's events ("sub":1) count as activity only: the main thread's state and open tool
 # are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
-# user too: it shows PERMISSION until that subagent's next tool result or denial, or until any
-# main-thread event.
+# user too: it shows PERMISSION until the next subagent tool result or denial (subagents are
+# not told apart, so any subagent's clears it), or until any main-thread event.
 # Reads only the last 200 lines; the writer's fixed format lets awk parse it.
 # ---------------------------------------------------------------------------
 _st_events() {
