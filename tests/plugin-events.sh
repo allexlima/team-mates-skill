@@ -65,6 +65,11 @@ for e,gs in h.items():
         assert e=="PreToolUse" and g["matcher"]=="Edit|Write|MultiEdit|NotebookEdit|Bash", g; continue
       assert c["command"]==f"\"${{CLAUDE_PLUGIN_ROOT}}/hooks/event.sh\" {e}", c
 PY'
+# Real PreToolUse key order (captured from CLI 2.1.323): nested "effort" object before tool_name.
+real='{"session_id":"s","transcript_path":"/t.jsonl","cwd":"/w","prompt_id":"p","permission_mode":"auto","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests","tool_input":{"tool_name":"Leak"},"tool_use_id":"u"}'
+printf '%s' "$real" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "real payload shape: top-level tool kept" 'tail -1 "$E" | grep -q "\"tool\":\"mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests\"}"'
+
 # --- PreToolUse fence (fence.py) -------------------------------------------
 F="$P/hooks/fence.py"
 mkdir -p "$W/wt/sub" "$W/run" "$W/out"; ln -s "$W/out" "$W/wt/escape"

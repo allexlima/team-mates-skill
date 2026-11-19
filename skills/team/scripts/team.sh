@@ -7,6 +7,7 @@
 #                         is recorded or its dir is gone (then spawn without --resume)
 #   team.sh close <team>  -> force-closes every recorded pane/tab (incl. the monitor) whose live title still matches
 #                            its row (a reused ref is skipped, row dropped) and drops finished rows (the team is over);
+#                            each dropped row's scratch dir and system prompt in the registry dir go with it;
 #                            exit 1 (rows kept for a retry) if one could not be closed
 #   team.sh init <team>   -> creates .team/ (idempotent) + a run dir; prints the run dir path
 #   team.sh lead-title    -> renames the lead's cmux workspace and tab to "Main Board - <project>"
@@ -20,7 +21,8 @@
 #                            Rows of other projects are never shown or touched; live rows with no root (legacy) are only counted, never named or closed.
 #                            exit 1 if one could not be closed
 #   team.sh gate-init     -> sets up the no-mistakes gate for this repo (needs an "origin" remote)
-#   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept)
+#   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept),
+#                            and its finished teammates' scratch dirs and system prompts in the registry dir
 #   team.sh finish <team> <role> -> after the lead received a teammate's report: mark its row finished (session id
 #                                  and cwd kept), then close its pane. exit 2 refused, nothing changed: the report did
 #                                  not grow since spawn or gained no new PARALLELISM: line, tasks.md lacks
@@ -147,7 +149,8 @@ _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 # git commit's hook-skipping flag, long form (and its unambiguous prefixes) and -n. A rule matches the
 # command text, so a combined short flag such as -an is not caught. Live-probed (CLI 2.1.306): no deny
 # rule, not even Bash(git *), matches a git command that starts with a global option, so
-# `git -C <dir> commit --no-verify` and `git -c core.hooksPath=… commit` get through; that needs a hook.
+# `git -C <dir> commit --no-verify` and `git -c core.hooksPath=… commit` get through; the plugin fence
+# (plugin/hooks/fence.py, loaded by spawn below) blocks those.
 _team_deny="Bash(git commit *--no-veri*),Bash(git commit -n*),Bash(git commit * -n*)"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
@@ -381,6 +384,15 @@ _reg_add() {
 # 0 when a registry row (whole line) carries the terminal marker: its teammate was finished on purpose
 # (`team.sh finish`), its pane is gone by design, and the row holds the session id to resume from.
 _finished() { [ "$(awk '{print $9}' <<<"$1")" = finished ]; }
+# Remove one teammate's scratch dir and system prompt from the registry dir, by exact title
+# (team slugs prefix each other, so never by glob). A symlink planted there is left alone.
+_rm_mate_files() {
+  local f
+  for f in "$(_reg_dir)/team-$1.scratch" "$(_reg_dir)/team-$1.sysprompt.md"; do
+    [ -e "$f" ] && [ ! -L "$f" ] || continue
+    rm -rf -- "$f" && echo "removed $f"
+  done
+}
 # A report's last mandatory section header (plain, bold or heading markdown); `finish` counts these.
 # No `>`: a blockquoted PARALLELISM: is a peer's report being quoted, not this teammate's trailer.
 _trailer='^[#*_ -]*PARALLELISM:'
@@ -470,7 +482,7 @@ _lock() {
 _mates() { [ -f "$1" ] || return 0; awk '($3=="pane" || $3=="tab") && $9!="finished" {print $4}' "$1" | sort -u; }
 
 # Every subcommand that reads or writes the registry dir checks it first.
-case $sub in reap|close|finish|show|list|status|monitor|sync|spawn) _reg_dir_init ;; esac
+case $sub in reap|close|finish|show|list|status|monitor|sync|spawn|clean) _reg_dir_init ;; esac
 
 # Libraries: functions only (sub_<name> per subcommand), sourced after the helpers they use,
 # so a missing lib only disables its own subcommands.
@@ -623,12 +635,26 @@ fi
 
 if [ "$sub" = clean ]; then
   team=${1:?team}
-  root=$(_root)
+  root=$(_root); reg=$(_reg "$team")
+  # Team slugs prefix each other (foo, foo-bar). With the team's registry, only its own titles count;
+  # after `close` removed it, any worktree another registered team lists is skipped.
+  if [ -f "$reg" ]; then mine=$(awk '{print $4}' "$reg"); others=
+  else mine=; others=$(find "$(_reg_dir)" -maxdepth 1 -name 'team-*.tabs' -exec awk '{print $4}' {} + 2>/dev/null); fi
   for wt in "$root"/.team/worktrees/"$team"-*; do
     [ -d "$wt" ] || continue
+    t=${wt##*/}
+    if [ -f "$reg" ]; then grep -qxF -- "$t" <<<"$mine" || continue
+    elif grep -qxF -- "$t" <<<"$others"; then echo "kept $wt (another team's)"; continue; fi
     if git -C "$root" worktree remove "$wt" 2>/dev/null; then echo "removed $wt"
     else echo "kept $wt (uncommitted changes)"; fi
   done
+  # Finished teammates' scratch dirs and system prompts go too, by the titles in this team's own
+  # registry (`close` already removed the files of the rows it dropped); a live teammate's are kept.
+  [ -f "$reg" ] && while IFS= read -r row; do
+    read -r _ _ _ title _ <<<"$row" || true
+    [ -n "${title:-}" ] || continue
+    if _finished "$row"; then _rm_mate_files "$title"; else echo "kept $title's scratch and system prompt (live)"; fi
+  done < "$reg"
   exit 0
 fi
 
@@ -649,12 +675,12 @@ if [ "$sub" = close ]; then
     read -r backend id _ title _ _ rd _ <<<"$row" || true
     [ -n "${id:-}" ] || continue
     rm -f "$(_reg_dir)/team-$team-${title#"$team"-}.round"
-    if _finished "$row"; then echo "dropped finished $title (no pane)"; continue; fi
+    if _finished "$row"; then echo "dropped finished $title (no pane)"; _rm_mate_files "$title"; continue; fi
     case $backend in cmux|tmux) ;; *) echo "dropped $backend $id ($title): unknown backend; close it by hand"; continue ;; esac
     cur=$(awk -F'\t' -v x="$id" '$1==x {print $2; exit}' <<<"$titles")
-    if [ -z "$cur" ]; then echo "closed $backend $id (already gone)"; continue; fi
-    if [ "$cur" != "$title" ]; then echo "skipped $backend $id: now titled '$cur', not '$title' (ref reused); row dropped"; continue; fi
-    if err=$(_mux_close "$backend" "$id"); then echo "closed $backend $id"
+    if [ -z "$cur" ]; then echo "closed $backend $id (already gone)"; _rm_mate_files "$title"; continue; fi
+    if [ "$cur" != "$title" ]; then echo "skipped $backend $id: now titled '$cur', not '$title' (ref reused); row dropped"; _rm_mate_files "$title"; continue; fi
+    if err=$(_mux_close "$backend" "$id"); then echo "closed $backend $id"; _rm_mate_files "$title"
     else echo "could not close $backend $id: $err" >&2; keep+="$row"$'\n'; fi
   done < "$reg"
   # Clear the lead sidebar pill/progress for this team (lib/status.sh); best-effort.
@@ -1096,6 +1122,23 @@ python3 -c 'import os,sys; os.replace(sys.argv[1], sys.argv[2])' "$sptmp" "$sysp
   || { rm -f "$sptmp"; echo "team.sh: refused: cannot replace $sysprompt (is it another user's file?)" >&2; exit 2; }
 envs="CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4 TEAM_MEMBER=$(printf %q "$title")"
 [ "$submodel" != - ] && envs+=" CLAUDE_CODE_SUBAGENT_MODEL=$(printf %q "$submodel")"
+# Session-only hook plugin (../plugin): an event log for `status` and a PreToolUse fence. It goes in
+# with --plugin-dir, never --settings: cmux already passes --settings and a second one replaces it
+# (last wins), dropping cmux's own hooks. Needs a run dir for the event log; skipped without one.
+plugin="$here/../plugin" plugarg=
+if [ "$rundir" != - ] && [ -f "$plugin/hooks/hooks.json" ]; then
+  ev="$rundir/events" scratch="$(_reg_dir)/team-$team-$role.scratch"
+  for d in "$ev" "$scratch"; do
+    { [ ! -L "$d" ] && (umask 077; mkdir -p "$d") && [ -O "$d" ]; } \
+      || { echo "team.sh: refused: $d is a symlink or not yours" >&2; exit 2; }
+  done
+  chmod 700 "$scratch"
+  envs+=" TEAM_EVENTS_FILE=$(printf %q "$ev/$role.jsonl") TEAM_SCRATCH=$(printf %q "$scratch")"
+  envs+=" TEAM_FENCE_ROOTS=$(printf %q "$dir:$rundir:$scratch")"
+  plugarg=" --plugin-dir=$(printf %q "$(cd "$plugin" && pwd)")"
+elif [ "$rundir" = - ]; then
+  echo "no run dir: teammate runs without the event log and fence" >&2
+fi
 # Our own session id, recorded in the registry, so a later round can `claude --resume` it. A resumed
 # session keeps its id (live-probed). Permission mode and allowlist are passed again on resume; the
 # system prompt is not: claude replays the one recorded at the session's first request and ignores a
@@ -1128,6 +1171,7 @@ if [ "$tier" != haiku ]; then
     *) allow+=",Edit,Write" ;;
   esac
 fi
+cmd+=$plugarg
 # One comma-joined value: the flag is variadic and would otherwise swallow the prompt.
 # `=` form: both flags are variadic, so a spaced value would also swallow the prompt when it comes next.
 [ -n "$allow" ] && cmd+=" --allowedTools=$(printf %q "$allow")"

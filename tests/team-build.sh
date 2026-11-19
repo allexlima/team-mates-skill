@@ -1240,6 +1240,97 @@ _disallow_of() {
 }
 
 # ══════════════════════════════════════════════════════════════════
+# T28b — spawn loads the event/fence plugin with --plugin-dir (never a second
+# --settings, which would replace cmux's hooks) and sets its env in the launcher.
+# ══════════════════════════════════════════════════════════════════
+{
+  R="$W/t28b"; _mkgit "$R"; run="$R/.team/runs/r1"; mkdir -p "$run/prompts"
+  pf="$run/prompts/worker.md"; printf 'prompt\n' > "$pf"
+  TM="t28b$$"; plug="$(cd "$(dirname "$TEAM_SH")/../plugin" && pwd)"
+  _reset_logs
+  (cd "$R" && bash "$TEAM_SH" spawn "$TM" worker "$pf" sonnet) >/dev/null 2>&1 || true
+  rm -f "$TEAM_REG_DIR/team-$TM.tabs"
+  line=$(grep -- '--plugin-dir=' "$CMUX_LOG" || true)
+  scr="$TEAM_REG_DIR/team-$TM-worker.scratch"
+  case $line in *"--plugin-dir=$plug "*) pass "T28b: --plugin-dir=<skill>/plugin in cmd" ;;
+    *) fail "T28b: --plugin-dir=<skill>/plugin in cmd" "${line:-(no --plugin-dir)}" ;; esac
+  case $line in *--settings*) fail "T28b: spawn adds no --settings" "$line" ;; *) pass "T28b: spawn adds no --settings" ;; esac
+  case $line in *"TEAM_EVENTS_FILE=$run/events/worker.jsonl "*) pass "T28b: TEAM_EVENTS_FILE in the run dir" ;;
+    *) fail "T28b: TEAM_EVENTS_FILE in the run dir" "$line" ;; esac
+  case $line in *"TEAM_FENCE_ROOTS=$R:$run:$scr "*) pass "T28b: fence roots = dir:run:scratch" ;;
+    *) fail "T28b: fence roots = dir:run:scratch" "$line" ;; esac
+  case "$(ls -ld "$run/events") $(ls -ld "$scr")" in drwx------*" "drwx------*) pass "T28b: events and scratch dirs are 0700" ;;
+    *) fail "T28b: events and scratch dirs are 0700" "$(ls -ld "$run/events" "$scr" 2>&1)" ;; esac
+
+  # A symlinked events dir is refused before any pane opens.
+  R2="$W/t28b2"; _mkgit "$R2"; run2="$R2/.team/runs/r1"; mkdir -p "$run2/prompts" "$W/t28b-elsewhere"
+  ln -s "$W/t28b-elsewhere" "$run2/events"; printf 'prompt\n' > "$run2/prompts/worker.md"
+  _reset_logs; rc=0
+  (cd "$R2" && bash "$TEAM_SH" spawn "t28c$$" worker "$run2/prompts/worker.md" sonnet) >/dev/null 2>&1 || rc=$?
+  rm -f "$TEAM_REG_DIR/team-t28c$$.tabs"
+  [ "$rc" = 2 ] && ! grep -q new-split "$CMUX_LOG" && pass "T28b: symlinked events dir refused (exit 2, no pane)" \
+    || fail "T28b: symlinked events dir refused (exit 2, no pane)" "rc=$rc"
+
+  # No run dir: no event log to write, so no plugin.
+  pf3="$R/p.md"; printf 'prompt\n' > "$pf3"; _reset_logs
+  err=$( (cd "$R" && bash "$TEAM_SH" spawn "t28d$$" worker "$pf3" sonnet) 2>&1 >/dev/null || true)
+  rm -f "$TEAM_REG_DIR/team-t28d$$.tabs"
+  grep -q -- '--plugin-dir' "$CMUX_LOG" && fail "T28b: no run dir, no plugin" || pass "T28b: no run dir, no plugin"
+  case $err in *"no run dir: teammate runs without the event log and fence"*) pass "T28b: no run dir warns on stderr" ;;
+    *) fail "T28b: no run dir warns on stderr" "$err" ;; esac
+
+  # clean removes the team's scratch dirs and system prompts, except a live teammate's;
+  # a symlink planted under that name is never followed.
+  T="cl$$"; D="$TEAM_REG_DIR"
+  mkdir -p "$D/team-$T-gone.scratch/sub" "$D/team-$T-live.scratch" "$W/cl-victim"
+  touch "$D/team-$T-gone.sysprompt.md" "$D/team-$T-live.sysprompt.md" "$W/cl-victim/keep"
+  ln -s "$W/cl-victim" "$D/team-$T-link.scratch"
+  printf 'cmux surface:9 pane %s - - - %s live 00000000-0000-0000-0000-000000000000 %s\n' "$T-live" "$R" "$R" > "$D/team-$T.tabs"
+  printf 'cmux surface:8 pane %s - - - %s finished - %s\n' "$T-gone" "$R" "$R" >> "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-gone.scratch" ] && [ ! -e "$D/team-$T-gone.sysprompt.md" ] \
+    && pass "T28b: clean removes a finished teammate's scratch and sysprompt" \
+    || fail "T28b: clean removes a finished teammate's scratch and sysprompt" "$(ls "$D" | grep "$T")"
+  [ -d "$D/team-$T-live.scratch" ] && [ -f "$D/team-$T-live.sysprompt.md" ] \
+    && pass "T28b: clean keeps a live teammate's scratch and sysprompt" \
+    || fail "T28b: clean keeps a live teammate's scratch and sysprompt"
+  [ -f "$W/cl-victim/keep" ] && pass "T28b: clean does not follow a symlinked scratch" \
+    || fail "T28b: clean does not follow a symlinked scratch"
+  rm -rf "$D/team-$T"*
+
+  # Team slugs prefix each other: clean and close of team foo never touch team foo-bar's files,
+  # registered or not; close removes its own finished teammates' files.
+  T="cp$$"; mkdir -p "$D/team-$T-bar-x.scratch" "$D/team-$T-bar-y.scratch" "$D/team-$T-a.scratch"
+  touch "$D/team-$T-bar-x.scratch/keep" "$D/team-$T-bar-x.sysprompt.md" "$D/team-$T-bar-y.sysprompt.md" "$D/team-$T-a.sysprompt.md"
+  printf 'cmux surface:7 pane %s - - - %s finished - %s\n' "$T-bar-y" "$R" "$R" > "$D/team-$T-bar.tabs"
+  printf 'cmux surface:6 pane %s - - - %s finished - %s\n' "$T-a" "$R" "$R" > "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ -f "$D/team-$T-bar-x.scratch/keep" ] && [ -f "$D/team-$T-bar-x.sysprompt.md" ] \
+    && [ -d "$D/team-$T-bar-y.scratch" ] && [ -f "$D/team-$T-bar-y.sysprompt.md" ] \
+    && pass "T28b: clean leaves a prefixed team's files" \
+    || fail "T28b: clean leaves a prefixed team's files" "$(ls "$D" | grep "$T")"
+  [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] \
+    && pass "T28b: clean removes its own finished teammate's files" \
+    || fail "T28b: clean removes its own finished teammate's files"
+  mkdir -p "$D/team-$T-a.scratch"; touch "$D/team-$T-a.sysprompt.md"
+  printf 'cmux surface:6 pane %s - - - %s finished - %s\n' "$T-a" "$R" "$R" > "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" close "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] && [ -f "$D/team-$T-bar-x.scratch/keep" ] \
+    && pass "T28b: close removes the files of the rows it drops, only those" \
+    || fail "T28b: close removes the files of the rows it drops, only those" "$(ls "$D" | grep "$T")"
+  # Worktrees too: clean foo (registry already gone after close) keeps foo-bar's clean worktree.
+  _git -C "$R" worktree add -q -b "team/$T-a" "$R/.team/worktrees/$T-a" HEAD
+  _git -C "$R" worktree add -q -b "team/$T-bar-x" "$R/.team/worktrees/$T-bar-x" HEAD
+  printf 'cmux surface:7 pane %s - - - %s finished - %s\n' "$T-bar-x" "$R" "$R" > "$D/team-$T-bar.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ ! -e "$R/.team/worktrees/$T-a" ] && [ -d "$R/.team/worktrees/$T-bar-x" ] \
+    && pass "T28b: clean removes its own worktree, not a prefixed team's" \
+    || fail "T28b: clean removes its own worktree, not a prefixed team's" "$(ls "$R/.team/worktrees" | grep "$T")"
+  _git -C "$R" worktree remove --force "$R/.team/worktrees/$T-bar-x" 2>/dev/null || true
+  rm -rf "$D/team-$T"*
+}
+
+# ══════════════════════════════════════════════════════════════════
 # Summary
 # ══════════════════════════════════════════════════════════════════
 echo ""
