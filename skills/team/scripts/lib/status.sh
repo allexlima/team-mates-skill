@@ -583,11 +583,23 @@ for t in tasks:
     sr = split_rest(t[4])
     tlist.append(dict(id=t[0], owner=t[1], done=t[2], needs=t[3],
                       ready=(not t[2]) and all(d in done_ids for d in t[3]), **sr))
+# The bar the classic frame draws (_ST_FRAME_PY keeps the same rule): overall task progress when
+# tasks.md has task lines; else the average self-reported % (reported/finished = 100), else
+# reported/total. bar_est marks a self-reported estimate (the `~`).
+eff = [100 if (r['ms'] == 'reported' or r['state'] == 'FINISHED') else r['pct']
+       for r in recs.values() if (r['ms'] == 'reported' or r['state'] == 'FINISHED' or r['pct'] >= 0)]
+use_avg = any(r['pct'] >= 0 for r in recs.values()) and bool(eff)
+if total > 0 and pct >= 0:
+    bar_pct, bar_est = pct, bool(est)
+else:
+    nrep = sum(1 for r in recs.values() if r['ms'] == 'reported' or r['state'] == 'FINISHED')
+    bar_pct = (sum(eff) // len(eff)) if use_avg else ((100 * nrep // len(recs)) if recs else 0)
+    bar_est = use_avg
 print(json.dumps(dict(
     version=1, team=team, run=None if run == '-' else run, now=int(time.time()),
     summary=dict(done=done, total=total, pct=pct, est=bool(est), elapsed_min=elapsed,
                  eta_min=eta, pending=len(pending), unassigned=unassigned, prs=len(prs),
-                 ready_owners=ready_owners),
+                 ready_owners=ready_owners, bar_pct=bar_pct, bar_est=bar_est),
     prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }

@@ -281,18 +281,18 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
 - **The TUI monitor.** When the status pane is a terminal and Textual is importable by
   `python3` (or `uv` is installed, which fetches it on first use), the pane runs the
   full-screen monitor in `scripts/monitor_tui.py` instead of the frame above. It shows the
-  same states, NEEDS YOU rows and overall % (it reads `team.sh status --json`, so both
-  monitors always agree), plus: one card per live teammate (state, task, step, a progress
-  bar, its own ETA, a sparkline of its % over time, the tool call in flight and how long it
-  has run, context use and tokens), the backlog with each open task's forecast, an event
-  log, and a detail view per teammate (report, recent tool calls, progress history, session
-  info). Keys: `1`-`9` focus that teammate's pane, arrows/tab move between cards,
+  same states, NEEDS YOU rows, overall % and team ETA (it reads `team.sh status --json` and
+  shows those numbers as they are, so both monitors always agree), plus: one card per live
+  teammate (state, task, step, a progress bar, its own ETA, a sparkline of its % over time,
+  the tool call in flight and how long it has run, context use and tokens), the backlog
+  with an estimated finish per open task, an event log, and a detail view per teammate
+  (report, recent tool calls, progress history, session info). Keys: `1`-`9` focus that teammate's pane, arrows/tab move between cards,
   `enter` or a click opens the detail view, `s` shows the selected pane, `r` refreshes,
   `t` changes the theme, `?` lists keys and states, `q` quits (the team keeps running).
-  The team ETA is a forecast, not a measurement: it schedules every open task over the
-  live teammates, after its `needs:`, with each running task's remaining time projected
-  from its self-reported % and every other task given the typical task duration seen so
-  far; the range shown with it reruns that with shorter and longer durations. Tokens,
+  The per-task estimates are forecasts, not measurements: the backlog schedules every open
+  task over the live teammates, after its `needs:`, with each running task's remaining time
+  projected from its self-reported % and every other task given the typical task duration
+  seen so far. They can differ from the team ETA above, which stays status.sh's. Tokens,
   context and the tool in flight are read (never written) from each teammate's Claude Code
   transcript, `~/.claude/projects/*/<session-id>.jsonl`; a tool call running for many
   minutes on a `stalled?` teammate is called out as a likely permission prompt. The

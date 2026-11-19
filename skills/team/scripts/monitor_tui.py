@@ -106,19 +106,12 @@ def task_num(tid):
     return int(m.group(1)) if m else 10 ** 6
 
 
-def overall_pct(doc):
-    """The headline %: overall task progress when tasks.md has task lines (status --json
-    computes it), else the teammates' average self-reported % (reported/finished = 100)."""
+def headline(doc):
+    """(pct, estimate?, eta seconds or None) exactly as status.sh computed them. Never
+    recomputed here: status --json is the one owner of the overall % and the team ETA."""
     s = doc.get("summary") or {}
-    if s.get("total", 0) > 0 and s.get("pct", -1) >= 0:
-        return s["pct"], bool(s.get("est"))
-    eff = []
-    for m in doc.get("teammates", []):
-        if m["state"] == "FINISHED" or m["milestone"] == "reported":
-            eff.append(100)
-        elif m.get("pct") is not None:
-            eff.append(m["pct"])
-    return (sum(eff) // len(eff), True) if eff else (0, False)
+    eta = s.get("eta_min", -1)
+    return s.get("bar_pct", 0), bool(s.get("bar_est")), (eta * 60.0 if eta is not None and eta >= 0 else None)
 
 
 # ── history: what the monitor has watched happen (persisted per run) ─────────────────
@@ -647,7 +640,9 @@ class DemoSource:
         prs = [f"https://github.com/acme/ingest/pull/{40 + i}" for i, t in enumerate(("T2", "T3", "T4", "T5")) if t in done_ids]
         return "ok", {"version": 1, "team": self.TEAM, "run": f".team/runs/2026-11-18-{self.TEAM}", "now": now,
                       "summary": {"done": len(done_ids), "total": total, "pct": pct, "est": True,
-                                  "elapsed_min": int(s / 60), "eta_min": -1, "pending": len(pend),
+                                  "bar_pct": pct, "bar_est": True,
+                                  "elapsed_min": int(s / 60),
+                                  "eta_min": int(s / 60) * (100 - pct) // pct if 5 <= pct < 100 and s >= 60 else -1, "pending": len(pend),
                                   "unassigned": sum(1 for t in pend if t["ready"] and t["id"] not in claimed
                                                     and (t["owner"] == "any" or t["owner"] not in live)),
                                   "prs": len(prs)},
@@ -774,6 +769,10 @@ def selftest():
     fc = forecast(doc, History(), now)
     check("F8: second task at 50% projects from the typical duration (~30 min), not spawn age (~60)",
           fc["eta"] is not None and abs(fc["eta"] - 1800) < 60, fc)
+    # N1: the headline is status.sh's, verbatim: even with 2 of 3 teammates finished, the bar is its 33
+    d = {"summary": {"bar_pct": 33, "bar_est": False, "eta_min": 25}, "teammates": [mate("t-a", None, None, st="FINISHED")] * 2}
+    check("N1: headline = summary bar_pct/bar_est/eta_min, never recomputed", headline(d) == (33, False, 1500.0), headline(d))
+    check("N2: eta_min -1 -> no ETA", headline({"summary": {"bar_pct": 0, "eta_min": -1}})[2] is None)
     # F7: a cycle in needs does not hang
     doc = {"tasks": [mk("T1", "any", needs=["T2"]), mk("T2", "any", needs=["T1"])], "teammates": [mate("t-a", None, None)],
            "summary": {"done": 1, "elapsed_min": 10}}
@@ -942,20 +941,15 @@ if HAVE_TEXTUAL:
                                  ("  ", ""), (doc.get("team", "?"), f"bold {PAL['active']}"),
                                  (f"  ·  {run}", PAL["dim"]), ("  ·  demo" if doc.get("demo") else "", PAL["warn"])),
                    Text(time.strftime("%H:%M:%S", time.localtime(now)), style="bold"))
-        pct, est = overall_pct(doc)
-        eta = fc.get("eta")
+        pct, est, eta = headline(doc)
         if eta is not None:
             eta = max(0.0, eta - age)
-        if eta == 0 and S.get("pending", 0) == 0 and S.get("total", 0) > 0:
+        if S.get("pending", 0) == 0 and S.get("total", 0) > 0:
             eta_t = Text("all tasks done", style=f"bold {PAL['done']}")
         elif eta is None:
             eta_t = Text("ETA —  (not enough signal yet)", style=PAL["dim"])
         else:
-            band = ""
-            if fc.get("lo") is not None and fc.get("hi") is not None and fc["hi"] - fc["lo"] >= 60:
-                band = f" ({fmt_dur(max(0, fc['lo'] - age))}–{fmt_dur(max(0, fc['hi'] - age))})"
             eta_t = Text.assemble(("ETA ", PAL["dim"]), (f"~{fmt_dur(eta)}", f"bold {PAL['accent']}"),
-                                  (band, PAL["dim"]),
                                   ("  ·  done ≈ ", PAL["dim"]),
                                   (time.strftime("%H:%M", time.localtime(now + eta)), "bold"))
         label = Text(f"  {'~' if est else ''}{pct}%  ", style="bold")
