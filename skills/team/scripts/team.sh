@@ -705,7 +705,7 @@ if [ "$sub" = facts-lint ]; then
     # || true: evidence with no file:line makes grep exit 1, which pipefail + set -e
     # would turn into a silent abort of the whole lint.
     file=$(printf '%s\n' "$line" | grep -oE '[A-Za-z0-9_./-]+:[0-9]+' | head -1 | cut -d: -f1 || true)
-    if printf '%s\n' "$line" | grep -q '@nogit' || [ -z "$sha" ]; then st=NOANCHOR
+    if grep -q '@nogit' <<<"$line" || [ -z "$sha" ]; then st=NOANCHOR
     elif [ -z "$file" ]; then st=CHECK
     elif [ ! -e "$root/$file" ] && [ ! -e "$file" ]; then st=GONE
     elif git -C "$root" diff --quiet "$sha" -- "$file" 2>/dev/null; then st=FRESH
@@ -731,7 +731,9 @@ if [ "$sub" = doccheck ]; then
   done
   hdr=$(sed '/^set -euo pipefail/q' "$here/team.sh")
   for s in $subs; do
-    printf '%s\n' "$hdr" | grep -qw -- "$s" || { echo "doccheck: subcommand '$s' not documented in the header" >&2; rc=1; }
+    # A here-string, not `printf | grep -q`: grep -q exits at the first match, printf then takes
+    # SIGPIPE, and pipefail reports a documented subcommand as missing (flaky on big headers).
+    grep -qw -- "$s" <<<"$hdr" || { echo "doccheck: subcommand '$s' not documented in the header" >&2; rc=1; }
   done
   for fl in $(sed -n '4p' "$here/../SKILL.md" | grep -oE '\-\-[a-z-]+'); do
     grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }

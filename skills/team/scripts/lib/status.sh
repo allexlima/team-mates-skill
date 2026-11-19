@@ -316,11 +316,11 @@ _st_row() {
             notif_title=${notif_line%%|*}
             notif_subtitle=${notif_line#*|}
             if [ -z "$skip_waiting" ]; then
-              printf '%s\n' "$notif_title" | grep -qi 'claude question' && waiting=1
+              grep -qi 'claude question' <<<"$notif_title" && waiting=1
             fi
             # Session completed its last turn but report not yet on disk
             if [ "$ms" != reported ]; then
-              printf '%s\n' "$notif_subtitle" | grep -qi '^completed in ' && idle=1
+              grep -qi '^completed in ' <<<"$notif_subtitle" && idle=1
             fi
           fi
         fi
@@ -1111,7 +1111,7 @@ sub_status() {
     # all finished? (non-empty record set, every row FINISHED)
     local allfin=
     if [ -n "$recs" ] && ! printf '%s\n' "$recs" | awk -F'\t' 'NF>=3 && $1!~/^@/ && $3!="FINISHED"{found=1} END{exit !found}'; then
-      printf '%s\n' "$recs" | grep -qv '^@' && allfin=1
+      grep -qv '^@' <<<"$recs" && allfin=1
     fi
     if [ -n "$allfin" ] && [ -z "$was_all_fin" ] && [ "$autoclose" = 1 ] \
        && [ -n "${_ST_SAW_UNFINISHED:-}" ]; then

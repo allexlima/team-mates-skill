@@ -167,5 +167,25 @@ mkdir -p "$W/td3/team-$uid"; chmod 755 "$W/td3/team-$uid"; regtest "$W/td3"
 regtest "$W/no-such-tmpdir"
 [ $rc = 3 ] && [[ $out == *refusing* ]] && pass "T15: a registry dir that cannot be created is refused" || fail "T15: uncreatable refused" "rc=$rc out=$out"
 
+# SP1: doccheck must not report a documented subcommand as missing when the header is big.
+# `printf "$hdr" | grep -q` let grep exit at its first match while printf was still writing;
+# printf took SIGPIPE and pipefail failed the check (seen on Ubuntu CI). Pad a copy's header
+# well past a pipe buffer, after the subcommand list, so the early match always races the write.
+SKC="$W/sp1"; mkdir -p "$SKC"
+cp -R "$(cd "$(dirname "$TEAM_SH")/../../.." && pwd)/skills" "$SKC/"
+cp "$(cd "$(dirname "$TEAM_SH")/../../.." && pwd)/README.md" "$SKC/" 2>/dev/null || true
+python3 -I - "$SKC/skills/team/scripts/team.sh" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+i = s.index('\nset -euo pipefail')
+open(p, 'w').write(s[:i] + ''.join('# pad %06d\n' % n for n in range(20000)) + s[i:])
+PY
+sp=0; sperr=
+for _ in 1 2 3 4 5; do
+  out=$(bash "$SKC/skills/team/scripts/team.sh" doccheck 2>&1) || { sp=$((sp+1)); sperr=$out; }
+done
+[ $sp = 0 ] && pass "SP1: doccheck passes 5/5 with a 260 kB header (no SIGPIPE false miss)" \
+  || fail "SP1: doccheck with a big header" "$sp/5 failed: $(printf '%s' "$sperr" | head -3)"
+
 [ $fails = 0 ] && echo "all passed" || echo "$fails failed"
 [ $fails = 0 ]
