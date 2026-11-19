@@ -141,6 +141,14 @@ _st_state() {
 # ---------------------------------------------------------------------------
 # _st_model_gone <m>: _model_gone's answer from the picker read once per refresh into
 # _ST_MODELS (one python start per refresh, not two per teammate).
+# _st_mtime <file>: mtime in epoch seconds. GNU stat vs BSD stat is probed once per refresh
+# (_ST_GNUSTAT, set in _st_records), not by a failing fork per file on macOS.
+_ST_GNUSTAT=
+_st_mtime() {
+  if [ -z "$_ST_GNUSTAT" ]; then stat -c %Y / >/dev/null 2>&1 && _ST_GNUSTAT=1 || _ST_GNUSTAT=0; fi
+  if [ "$_ST_GNUSTAT" = 1 ]; then stat -c %Y "$1" 2>/dev/null; else stat -f %m "$1" 2>/dev/null; fi
+}
+
 _ST_MODELS=
 _st_model_gone() {
   case ${1:-} in ''|-|opus|sonnet|haiku) return 1 ;; esac
@@ -214,7 +222,7 @@ _st_row() {
   local elapsed=-1
   local spf; spf="$(dirname "$(_reg "$team")")/team-$team-$role.sysprompt.md"
   if [ -f "$spf" ]; then
-    local st; st=$(stat -c %Y "$spf" 2>/dev/null || stat -f %m "$spf" 2>/dev/null) || true
+    local st; st=$(_st_mtime "$spf") || true
     if [ -n "${st:-}" ]; then
       local n2; n2=$(date +%s); elapsed=$(( (n2 - st) / 60 ))
     fi
@@ -225,7 +233,7 @@ _st_row() {
   local f t
   for f in "$rpt" "$stf"; do
     [ -n "$f" ] && [ -f "$f" ] || continue
-    t=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+    t=$(_st_mtime "$f") || continue
     [ "$t" -gt "$newest" ] && newest=$t
   done
   if [ "$newest" -gt 0 ]; then
@@ -413,6 +421,7 @@ except Exception:
   fi
 
   _ST_MODELS=$(_team_models 2>/dev/null || true)
+  _ST_GNUSTAT=; _st_mtime / >/dev/null   # probe stat flavour here, outside the per-row subshells
 
   # Deduplicate by title (last row wins, first-appearance order, dash excluded)
   local deduped
