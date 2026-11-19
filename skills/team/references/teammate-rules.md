@@ -32,9 +32,11 @@ the slowest teammate sets the pace for the whole team.
   titled `rev3-docs` writes to `<run>/status/docs.txt`, not `<run>/status/rev3-docs.txt`.
   Overwrite it each time — do not append. One line, no secrets or data.
 - **Start each status line with the task id you are on and end it with your own rough
-  progress**, as `T<n>: <step> · NN%` (e.g. `T3: drafting report · 70%`). The id tells the
-  monitor which backlog task your % belongs to; with no backlog ids in tasks.md, drop the
-  prefix. The monitor turns the % into a per-teammate bar, the team's overall % and an ETA;
+  progress**, as `T<n>: <step> · NN%` (e.g. `T3: drafting report · 70%`). When you have
+  split the task into steps, write `T<n>: k/N · <step>` instead (e.g. `T3: 2/5 · drafting
+  report`, meaning 2 of 5 steps done); the monitor turns k/N into the %, and it wins over
+  a `· NN%` on the same line. The id tells the monitor which backlog task your % belongs
+  to; with no backlog ids in tasks.md, drop the prefix. The monitor turns the % into a per-teammate bar, the team's overall % and an ETA;
   without it that row shows no bar, which is fine — the milestone still shows. There is
   no measured progress signal available, so this is *your* estimate: judge it against the
   whole task you were given, not the step you are on, and do not jump to 90% because the

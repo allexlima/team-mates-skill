@@ -199,6 +199,7 @@ _st_events() {
 # _st_row <row> <run> <leadpane> <team>: one TAB-separated record per teammate
 #   role  title  state  milestone  step  age_min(-1 = none)  note  pct  elapsed
 #   event_state  event_age_s  open_tool   ('-' each when the teammate has no event log)
+#   step_k  step_n   (steps done / total from a "T<n>: k/N · step" status line, else '-')
 # Detection only (decision 7): gathers the facts and asks _st_state for the token;
 # _st_frame does all layout. Reads module globals: _ST_UUID_MAP, _ST_NOTIF_DATA
 # ---------------------------------------------------------------------------
@@ -279,6 +280,14 @@ _st_row() {
     [ "$pct" -gt 100 ] && pct=100
     step=$(printf '%s' "$step" | sed -E 's/[[:space:]]*(·|\xc2\xb7)?[[:space:]]*[0-9]{1,3}%[[:space:]]*$//')
     [ -n "$step" ] || step='-'
+  fi
+  # Step-based progress, "T<n>: k/N · step": k of N steps done gives pct = k/N and wins over a
+  # "· NN%" suffix. Still the teammate's own count, never measured.
+  local sk=- sn=- _sre='^[[:space:]]*(T[0-9]+:[[:space:]]*)?([0-9]{1,4})/([0-9]{1,4})[[:space:]]*(·|-)'
+  if [[ "$step" =~ $_sre ]] && [ $((10#${BASH_REMATCH[3]})) -gt 0 ]; then
+    sn=$((10#${BASH_REMATCH[3]})); sk=$((10#${BASH_REMATCH[2]}))
+    [ "$sk" -gt "$sn" ] && sk=$sn
+    pct=$((sk * 100 / sn))
   fi
 
   # ------ ELAPSED (since this round's spawn; sysprompt mtime is written then) --
@@ -423,8 +432,8 @@ _st_row() {
   # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt" "$sk" "$sn"
 }
 
 # _st_records <reg> <run> <leadpane> <team>: one _st_row record per non-dash teammate
@@ -556,7 +565,8 @@ for line in sys.stdin:
     recs[f[1]] = dict(role=f[0], state=f[2], ms=f[3], step=f[4], age=num(f[5]),
                       note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]),
                       evs=f[9] if len(f) > 11 else '-', eva=num(f[10]) if len(f) > 11 else -1,
-                      evt=f[11] if len(f) > 11 else '-')
+                      evt=f[11] if len(f) > 11 else '-',
+                      sk=num(f[12]) if len(f) > 13 else -1, sn=num(f[13]) if len(f) > 13 else -1)
 tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
@@ -667,7 +677,8 @@ for title, r in recs.items():
         report=rp if rp and os.path.isfile(rp) else None, report_mtime=mtime(rp) if rp else None,
         status_mtime=mtime(sp) if sp else None,
         event_state=dash(r['evs']), event_age_s=None if r['eva'] < 0 else r['eva'],
-        open_tool=dash(r['evt'])))
+        open_tool=dash(r['evt']),
+        step_k=None if r['sk'] < 0 else r['sk'], step_n=None if r['sn'] < 0 else r['sn']))
 def split_rest(rest):
     parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
     out = dict(scope=parts[0].strip() or None, owns=None)

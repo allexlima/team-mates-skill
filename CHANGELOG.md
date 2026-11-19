@@ -6,10 +6,7 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.2.0] - YYYY-MM-DD
-
-<!-- Release draft. Before the release PR: set the date, fill the placeholders below
-     from what merged, and drop any line whose PR did not land. -->
+## [0.2.0] - 2026-11-19
 
 ### Added
 
@@ -36,8 +33,9 @@ All notable changes to this project are recorded here. The format follows
   `permission` state for a teammate blocked on a tool-permission prompt, and
   idle and activity age taken from the events. `status --json` adds
   `event_state`, `event_age_s` and `open_tool`. (#20)
-- PLACEHOLDER (T29): step-based progress (`T3: 2/5 · step`) in the status line
-  and the monitor.
+- Step progress: a teammate status line `T<n>: k/N · <step>` sets that
+  teammate's self-reported % to k/N in `status` and the monitor (see `--help`);
+  `status --json` adds `step_k` and `step_n`. (#21)
 
 ### Changed
 
@@ -139,5 +137,6 @@ then this release's fixes and the new contributor flow.
 - Tool-list flags are passed as `--flag=value`, so a variadic flag can no
   longer swallow the prompt.
 
-[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/allexlima/team-mates-skill/releases/tag/v0.1.1
