@@ -153,6 +153,8 @@ _st_state() {
 # as activity. <open_tool> is the tool of a PreToolUse with no later PostToolUse(Failure),
 # PermissionDenied, UserPromptSubmit (a new turn: a denied tool never gets a PostToolUse),
 # Stop or SessionEnd: a long tool is running, so silence is not a stall.
+# A subagent's events ("sub":1, including its PermissionRequest) count as activity only: the
+# main thread's state and open tool are what the row shows.
 # Reads only the last 200 lines; the writer's fixed format lets awk parse it.
 # ---------------------------------------------------------------------------
 _st_events() {
@@ -163,7 +165,7 @@ _st_events() {
       s = substr($0, RSTART, RLENGTH); sub(/^"[^"]*": *"?/, "", s); return s }
     { t = val("t") + 0; ev = val("ev"); if (ev == "" || t == 0) next
       last = t
-      if (ev == "SubagentStart" || ev == "SubagentStop") next
+      if (ev == "SubagentStart" || ev == "SubagentStop" || val("sub") == "1") next
       nt = val("ntype"); tool = val("tool")
       if (ev == "PermissionRequest" || (ev == "Notification" && nt == "permission_prompt")) state = "PERMISSION"
       else if (ev == "Stop" || ev == "StopFailure" || (ev == "Notification" && nt == "idle_prompt")) { state = "IDLE"; open = "" }
@@ -385,6 +387,8 @@ _st_row() {
       PERMISSION) perm=1 ;;
       IDLE) [ "$ms" = reported ] || idle=1 ;;
     esac
+    # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
+    [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
       [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
     esac

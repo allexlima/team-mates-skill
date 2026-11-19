@@ -37,6 +37,13 @@ check "multi-line payload: later lines ignored" '! grep -q Leak "$E"'
 mcp=mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests
 printf '{"tool_name":"%s","tool_input":{}}' "$mcp" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
 check "75-char MCP tool name kept" '[ ${#mcp} = 75 ] && tail -1 "$E" | grep -q "\"tool\":\"$mcp\"}"'
+# Key order and agent_id seen on claude 2.1.323: a subagent's events carry a top-level agent_id
+# before tool_input; the main thread's do not. Only a value-free flag is logged.
+printf '%s' '{"session_id":"s","cwd":"/c","prompt_id":"p","permission_mode":"default","agent_id":"a7f3e9","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"}}' \
+  | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "subagent event: sub flag, no agent id" 'tail -1 "$E" | grep -q "\"ev\":\"PreToolUse\",\"tool\":\"Read\",\"sub\":1}" && ! grep -qE "a7f3e9|general-purpose" "$E"'
+printf '%s' '{"cwd":"/x\"agent_id\":\"y","tool_name":"Read","tool_input":{"agent_id":"z"}}' | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "agent_id inside a value or tool_input: no sub flag" '! tail -1 "$E" | grep -q sub'
 
 n=$(wc -l <"$E")
 printf '{}' | env -u TEAM_EVENTS_FILE sh "$H" Stop
@@ -206,6 +213,12 @@ add '{"t":160,"ev":"Notification","ntype":"idle_prompt"}'
 check "idle_prompt: IDLE" '[ "$(ev "$F" 170)" = "IDLE 10 -" ]'
 add '{"t":180,"ev":"SessionEnd"}'
 check "SessionEnd: ENDED" '[ "$(ev "$F" 180)" = "ENDED 0 -" ]'
+: > "$F"; add '{"t":200,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":201,"ev":"SubagentStart","sub":1}'
+add '{"t":202,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":203,"ev":"PermissionRequest","tool":"Bash"}'
+add '{"t":204,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":205,"ev":"PostToolUse","tool":"Read","sub":1}'
+check "subagent tool events keep PERMISSION and the open tool, count as activity" '[ "$(ev "$F" 210)" = "PERMISSION 5 Bash" ]'
+add '{"t":206,"ev":"PostToolUse","tool":"Bash"}'; add '{"t":207,"ev":"PreToolUse","tool":"Read","sub":1}'
+check "subagent tool never opens a main-thread tool" '[ "$(ev "$F" 210)" = "WORKING 3 -" ]'
 ln -s "$F" "$W/link.jsonl"
 check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
 st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
@@ -229,6 +242,9 @@ check "row: PERMISSION under tmux, event fields carried" '[ "$(f 3)" = PERMISSIO
 printf '{"t":%s,"ev":"Stop"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
 rec=$(row)
 check "row: IDLE under tmux from Stop" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"PreToolUse","tool":"AskUserQuestion"}\n' "$((now - 700))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: open AskUserQuestion is WAITING with no notification (tmux)" '[ "$(f 3)" = WAITING ] && [ "$(f 12)" = AskUserQuestion ]'
 printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
 rec=$(row)
 check "row: 15 silent min, no open tool: stalled?" '[ "$(f 3)" = STALLED ]'

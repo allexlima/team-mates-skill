@@ -231,17 +231,18 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   `NO_COLOR` is set or `TERM=dumb`, and symbols fall back to ASCII in a non-UTF-8 locale.
   A `NEEDS YOU` block is pinned above the table only when a teammate is in one of the first
   five states below; the STEP column is dropped below 60 columns.
-    permission   Waiting on a tool-permission prompt (its event log's last event is a
-                 permission request): approve or deny it in its pane.
-    waiting      AskUserQuestion notification detected — teammates must not use this;
+    permission   Waiting on a tool-permission prompt (its event log's last main-thread
+                 event is a permission request): approve or deny it in its pane.
+    waiting      AskUserQuestion notification detected, or an AskUserQuestion still open
+                 in its event log — teammates must not use this;
                  `show` its pane and SendMessage it to send NEEDS INPUT to the lead instead.
                  Not detected for haiku/dontAsk tier.
     model gone   Its model is no longer available — respawn with a different model
     dead         Session exited — respawn it (a note says when its report is safe on disk)
-    stalled?     No status update for 10 minutes while mid-work. With an event log: no
-                 event for 10 minutes and no tool still running, so a long tool or hook is
-                 not flagged. This is "no update in a while", not "stuck": a subagent wait
-                 looks the same, so look at its pane before messaging it
+    stalled?     No status update in 10 minutes while mid-work; with an event log, no event
+                 in 10 minutes and no tool still running. This is "no update in a while",
+                 not "stuck": a subagent wait looks the same, so look at its pane before
+                 messaging it
     working      Doing its work (a note says "report on disk" once it has reported)
     idle         Turn ended with no report yet (a Stop or idle prompt in the event log, or
                  cmux's "Completed" notification); routine while it waits on a peer or the lead,
@@ -364,8 +365,9 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
 - A teammate with a run dir also loads the skill's `plugin/` folder for that session only
   (`--plugin-dir`; nothing is written to your settings, and your own hooks and cmux's still
   run).
-  - Event log: one line per hook event (time, event, tool name, notification type) in
-    `.team/runs/<run>/events/<role>.jsonl`. Tool input, prompts and messages are never recorded.
+  - Event log: one line per hook event (time, event, tool name, notification type,
+    and a flag when a subagent raised it) in `.team/runs/<run>/events/<role>.jsonl`. Tool
+    input, prompts, messages and agent ids are never recorded.
   - PreToolUse fence, enforced even in auto mode. It blocks Edit/Write/MultiEdit/
     NotebookEdit outside the teammate's worktree, run dir and private scratch dir
     (`$TEAM_SCRATCH`), so `/tmp` and `~/.claude` (memory, plans) are off limits; and git
