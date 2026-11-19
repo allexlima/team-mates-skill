@@ -46,6 +46,7 @@ jobs:
           bash tests/status-render.sh
           bash tests/team-finish.sh
           bash tests/tmux.sh
+          bash tests/prompt.sh
           # Suites that land in other PRs: skipped until their file is on this branch.
           for t in tests/plugin-events.sh; do
             if [ -f "$t" ]; then bash "$t"; else echo "skip $t (not on this branch yet)"; fi
