@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="Team-mates, the /team skill for Claude Code: a lead pane and four teammate panes in a two-column grid, with states working, idle, needs you and finished. Illustrative layout.">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Team-mates, the /team skill for Claude Code: a lead pane and four teammate panes in a two-column grid, showing working, idle and finished teammates and one that needs you. Illustrative layout.">
 </p>
 
 **Team-mates** adds a `/team` command to Claude Code. Your session becomes the lead of a small team of Claude Code sessions, one per terminal pane. The lead plans roles with you, passes findings between teammates so they can challenge each other, and writes up what survives. It uses standard Claude Code features only, so it works where the experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature is off.
