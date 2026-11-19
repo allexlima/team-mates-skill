@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `team.sh prompt`, which renders each teammate prompt from
+  `references/prompt-template.md` plus a short per-run brief.
+
 ## [0.1.1] - 2026-11-18
 
 First tagged release. It covers everything since the repo began on 2026-09-30,
