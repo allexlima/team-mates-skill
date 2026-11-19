@@ -94,7 +94,8 @@ Reported by tm2-hooks (`feat/hook-spawn`, `feat/hook-fence`; not yet in `dev`); 
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
 - [ ] The PreToolUse fence (feat/hook-fence @8018736) covers Edit/Write/MultiEdit/NotebookEdit
       paths and the git hook-skip forms, including global options, `sudo`, `doas`, `env -S "..."`
-      and `$(...)`. Still allowed: `eval "git commit ..."`, backticks, `xargs git commit`,
+      and git inside `$(...)`. Still allowed: `eval "git commit ..."`, backticks,
+      `$(echo git) commit -n` (a `$(...)` command word), `xargs git commit`,
       `env -S"..."` or `env --split-string=...`, `time --output f` or `--format f`,
       `HOME=<dir>` or `XDG_CONFIG_HOME=<dir>` pointing git at another global config, aliases in
       the user's own git config (`ci=commit -n`), git run from another interpreter

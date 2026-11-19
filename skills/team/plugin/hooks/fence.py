@@ -7,8 +7,8 @@
   `git config` write; also GIT_CONFIG, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM (a whole
   config file), and GIT_CONFIG_PARAMETERS/KEY_n naming one of those keys. The git argv is
   parsed, so `git -C <dir> ...` and wrapper forms (env, sudo, doas, sh -c, ...) are caught.
-Known gaps, not fenced: every other Bash write; commands built by eval, backticks, $(...),
-xargs, `env -S"..."` or `env --split-string=...` (spaced `env -S "..."` is caught);
+Known gaps, not fenced: every other Bash write; commands built by eval, backticks,
+$(...) as the command word (git inside $(...) is caught), xargs, `env -S"..."` or `env --split-string=...` (spaced `env -S "..."` is caught);
 GNU time's long `--output`/`--format` options; HOME= or XDG_CONFIG_HOME= pointing git at another config;
 aliases already present in the user's git config.
 Reads tool_input to decide and never logs it.
