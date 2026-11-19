@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+# Hermetic tests for the /team event plugin (skills/team/plugin): the hook
+# writer must append one {t, ev, tool, ntype} line, never log tool input,
+# and do nothing when TEAM_EVENTS_FILE is unset or unsafe.
+#   bash tests/plugin-events.sh
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+P="$HERE/skills/team/plugin"
+H="$P/hooks/event.sh"
+W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+fails=0
+pass() { echo "PASS  $1"; }
+fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
+check() { if eval "$2"; then pass "$1"; else fail "$1" "$2"; fi; }
+
+E="$W/events/r.jsonl"; mkdir -p "$W/events"
+pre='{"session_id":"s","cwd":"/x\"tool_name\":\"Evil","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo sk-ant-SECRET","tool_name":"Leak","notification_type":"leak"},"tool_use_id":"u"}'
+out=$(printf '%s' "$pre" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse); rc=$?
+check "exit 0, no stdout" '[ "$rc" = 0 ] && [ -z "$out" ]'
+check "tool name kept" 'grep -q "\"ev\":\"PreToolUse\",\"tool\":\"Bash\"}" "$E"'
+check "nothing from tool_input" '! grep -qE "SECRET|Leak|leak|Evil|command" "$E"'
+case "$(ls -l "$E")" in -rw-------*) pass "new file is 0600" ;; *) fail "new file is 0600" "$(ls -l "$E")" ;; esac
+
+printf '%s' '{"hook_event_name":"Notification","message":"Claude needs \"tool_name\":\"X\"","title":"t","notification_type":"permission_prompt"}' \
+  | TEAM_EVENTS_FILE="$E" sh "$H" Notification
+printf '{"hook_event_name":"Stop","last_assistant_message":"sk-ant-SECRET"}' | TEAM_EVENTS_FILE="$E" sh "$H" Stop
+check "append-only: 3 lines, first kept" '[ "$(wc -l <"$E" | tr -d " ")" = 3 ] && head -1 "$E" | grep -q PreToolUse'
+check "notification type kept" 'sed -n 2p "$E" | grep -q "\"ev\":\"Notification\",\"ntype\":\"permission_prompt\"}"'
+check "no message or last_assistant_message" '! grep -qE "SECRET|needs|\"X\"" "$E"'
+keys=$(python3 -I -c 'import json,sys
+print(sorted({k for l in open(sys.argv[1]) for k in json.loads(l)}))' "$E")
+check "only t/ev/tool/ntype keys, valid JSON" '[ "$keys" = "['"'"'ev'"'"', '"'"'ntype'"'"', '"'"'t'"'"', '"'"'tool'"'"']" ]'
+
+ml=$(printf '{"tool_name":"Read",\n"tool_input":{\n"tool_name":"Leak"}}')
+printf '%s' "$ml" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "multi-line payload: later lines ignored" '! grep -q Leak "$E"'
+mcp=mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests
+printf '{"tool_name":"%s","tool_input":{}}' "$mcp" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "75-char MCP tool name kept" '[ ${#mcp} = 75 ] && tail -1 "$E" | grep -q "\"tool\":\"$mcp\"}"'
+# Key order and agent_id seen on claude 2.1.323: a subagent's events carry a top-level agent_id
+# before tool_input; the main thread's do not. Only a value-free flag is logged.
+printf '%s' '{"session_id":"s","cwd":"/c","prompt_id":"p","permission_mode":"default","agent_id":"a7f3e9","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"}}' \
+  | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "subagent event: sub flag, no agent id" 'tail -1 "$E" | grep -q "\"ev\":\"PreToolUse\",\"tool\":\"Read\",\"sub\":1}" && ! grep -qE "a7f3e9|general-purpose" "$E"'
+printf '%s' '{"cwd":"/x\"agent_id\":\"y","tool_name":"Read","tool_input":{"agent_id":"z"}}' | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "agent_id inside a value or tool_input: no sub flag" '! tail -1 "$E" | grep -q sub'
+
+n=$(wc -l <"$E")
+printf '{}' | env -u TEAM_EVENTS_FILE sh "$H" Stop
+check "unset TEAM_EVENTS_FILE: no-op" '[ "$(wc -l <"$E")" = "$n" ] && [ -z "$(ls "$W" | grep -v events)" ]'
+printf '{}' | TEAM_EVENTS_FILE="$W/nodir/r.jsonl" sh "$H" Stop
+check "missing parent dir: no-op" '[ ! -e "$W/nodir" ]'
+printf '{}' | TEAM_EVENTS_FILE="$E" sh "$H" 'Stop;touch x'
+check "bad event name: no-op" '[ "$(wc -l <"$E")" = "$n" ]'
+ln -s "$W/target" "$W/events/link.jsonl"
+printf '{}' | TEAM_EVENTS_FILE="$W/events/link.jsonl" sh "$H" Stop
+check "symlink target refused" '[ ! -e "$W/target" ]'
+big=$(python3 -I -c "print('\u2014'*3000+'a'*300000, end='')")
+printf '{"tool_name":"Write","tool_input":{"content":"%s"}}' "$big" | LC_ALL=en_US.UTF-8 TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "large multi-byte payload cut mid-character: drained, line written" 'tail -1 "$E" | grep -q "\"tool\":\"Write\""'
+
+check "plugin.json names the plugin" 'python3 -I -c "import json,sys;assert json.load(open(sys.argv[1]))[\"name\"]==\"team-mates-events\"" "$P/.claude-plugin/plugin.json"'
+check "hooks.json: each event calls event.sh with its own name" 'python3 -I - "$P/hooks/hooks.json" <<'"'"'PY'"'"'
+import json,sys
+h=json.load(open(sys.argv[1]))["hooks"]
+need={"PreToolUse","PostToolUse","PermissionRequest","Notification","Stop","SubagentStop","SessionEnd"}
+assert need<=set(h), need-set(h)
+for e,gs in h.items():
+  for g in gs:
+    for c in g["hooks"]:
+      if "fence.py" in c["command"]:
+        assert e=="PreToolUse" and g["matcher"]=="Edit|Write|MultiEdit|NotebookEdit|Bash", g; continue
+      assert c["command"]==f"\"${{CLAUDE_PLUGIN_ROOT}}/hooks/event.sh\" {e}", c
+PY'
+# Real PreToolUse key order (captured from CLI 2.1.323): nested "effort" object before tool_name.
+real='{"session_id":"s","transcript_path":"/t.jsonl","cwd":"/w","prompt_id":"p","permission_mode":"auto","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests","tool_input":{"tool_name":"Leak"},"tool_use_id":"u"}'
+printf '%s' "$real" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "real payload shape: top-level tool kept" 'tail -1 "$E" | grep -q "\"tool\":\"mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests\"}"'
+
+# --- PreToolUse fence (fence.py) -------------------------------------------
+F="$P/hooks/fence.py"
+mkdir -p "$W/wt/sub" "$W/run" "$W/out"; ln -s "$W/out" "$W/wt/escape"
+fence() { # $1 roots, $2 tool_input json -> prints deny|allow
+  local o; o=$(printf '{"cwd":"%s","tool_name":"Write","tool_input":%s}' "$W/wt" "$2" | TEAM_FENCE_ROOTS="$1" python3 -I "$F")
+  case $o in *'"deny"'*) echo deny ;; '') echo allow ;; *) echo "odd:$o" ;; esac; }
+R2="$W/wt:$W/run"
+check "fence: inside worktree allowed" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/sub/a.txt\"}")" = allow ]'
+check "fence: run dir allowed" '[ "$(fence "$R2" "{\"file_path\":\"$W/run/r.md\"}")" = allow ]'
+check "fence: relative path resolved from cwd" '[ "$(fence "$R2" "{\"file_path\":\"sub/a.txt\"}")" = allow ]'
+check "fence: outside denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/out/b.txt\"}")" = deny ]'
+check "fence: .. escape denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/../out/b.txt\"}")" = deny ]'
+check "fence: symlinked dir escape denied" '[ "$(fence "$R2" "{\"file_path\":\"$W/wt/escape/b.txt\"}")" = deny ]'
+check "fence: sibling prefix denied" 'mkdir -p "$W/wt2"; [ "$(fence "$R2" "{\"file_path\":\"$W/wt2/x\"}")" = deny ]'
+check "fence: notebook_path checked" '[ "$(fence "$R2" "{\"notebook_path\":\"$W/out/n.ipynb\"}")" = deny ]'
+check "fence: unset roots = no fence" '[ "$(fence "" "{\"file_path\":\"$W/out/b.txt\"}")" = allow ]'
+check "fence: no path = allow" '[ "$(fence "$R2" "{}")" = allow ]'
+check "fence: non-object payload = allow" '[ "$(printf "[]" | TEAM_FENCE_ROOTS="$R2" python3 -I "$F"; echo "rc=$?")" = "rc=0" ]'
+
+# Bash: git forms that skip hooks. Cases are data lines "want<TAB>command";
+# \n in a command is a real newline.
+gitcase() { # $1 want, $2 command
+  local o; o=$(python3 -I -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1].replace("\\n","\n")}}))' "$2" \
+    | TEAM_FENCE_ROOTS="$R2" python3 -I "$F")
+  case $o in *'"deny"'*) got=deny ;; '') got=allow ;; *) got="odd:$o" ;; esac
+  if [ "$got" = "$1" ]; then pass "fence git: $1 $2"; else fail "fence git: $1 $2" "got $got"; fi; }
+while IFS=$'\t' read -r want cmd; do [ -n "$want" ] && gitcase "$want" "$cmd"; done <<'CASES'
+deny	git -C /x commit --no-verify -m a
+deny	git -c core.hooksPath=/dev/null commit -m a
+deny	git -c Core.HooksPath=x commit
+deny	git -ccore.hooksPath=x commit
+deny	git --config-env=core.hooksPath=V commit
+deny	git --config-env core.hooksPath=V commit
+deny	git commit -nm msg
+deny	git commit -an
+deny	git status && git -C . commit --no-verify
+deny	cd x; /usr/bin/git commit --no-verify
+deny	env FOO=1 git commit --no-verify
+deny	command git -C . push --no-verify
+deny	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=x git commit
+deny	bash -c "git -C . commit --no-verify"
+deny	git status\ngit commit -n
+deny	bash -lc "git commit --no-verify"
+deny	sh -ec 'git commit -n'
+deny	git config core.hooksPath /dev/null
+allow	git -C . config --unset core.hooksPath
+deny	export GIT_CONFIG_PARAMETERS="'core.hooksPath=x'"; git commit
+deny	git commit --no-verif
+deny	git push --no-ver
+deny	git commit \\n--no-verify -m x
+deny	env -u FOO git commit --no-verify
+deny	env -S "git commit --no-verify"
+deny	nice -n 5 git commit --no-verify
+deny	time -p git commit --no-verify
+deny	env -P /usr/bin git commit --no-verify
+deny	exec -a name git commit --no-verify
+deny	/usr/bin/env git commit --no-verify
+deny	timeout 60 git commit --no-verify
+deny	timeout -s KILL 60 git commit --no-verify
+deny	env -iu FOO git commit --no-verify
+deny	/bin/bash -c "git commit --no-verify"
+allow	git commit \\n-m ok
+allow	git config --get core.hooksPath
+allow	git config user.name x
+allow	bash -l script.sh
+allow	git commit -mn
+allow	git commit -am "mention --no-verify in a message"
+allow	git commit -m x -- --no-verify
+allow	git push -n
+allow	git log -n 3
+allow	git -C /x commit -m ok
+allow	git -c user.name=x commit -m ok
+allow	echo git commit --no-verify
+allow	grep -rn no-verify .
+allow	git commit -m "unbalanced
+deny	git -c alias.ci=commit ci -n
+deny	git -c "alias.x=commit -n" x
+deny	git -c include.path=/tmp/evil.cfg commit
+deny	git -c includeIf.gitdir:/x.path=/tmp/e commit
+deny	git config alias.ci "commit -n"
+deny	GIT_CONFIG_GLOBAL=/tmp/evil.cfg git commit
+deny	GIT_CONFIG_SYSTEM=/tmp/evil.cfg git commit
+deny	GIT_CONFIG=/tmp/evil.cfg git commit
+deny	sudo git commit -n
+deny	sudo -u root git -C . commit -n
+deny	sudo -n git commit --no-verify
+deny	sudo -S git commit -n
+deny	sudo -k git commit -n
+deny	sudo --user root git commit --no-verify
+deny	doas git commit -n
+deny	doas -u root git -C . commit --no-verify
+deny	git commit -m a\ #x --no-verify
+deny	git config --rename-section foo include
+deny	git config rename-section foo includeIf.gitdir:/
+deny	/usr/bin/time -a -o f git commit --no-verify
+deny	git commit -m a#b --no-verify
+deny	git commit -m "#12 fix" --no-verify
+deny	git config set core.hooksPath /dev/null
+deny	git config --file .git/config core.hooksPath x
+deny	if git commit -n; then :; fi
+deny	! git commit --no-verify
+deny	{ git commit -n; }
+deny	for x in 1; do git commit -n; done
+deny	git config core.hooksPath get
+deny	git config include.path list
+allow	git config get core.hooksPath
+allow	git status # --no-verify
+allow	git status\n# git commit --no-verify
+allow	git config remote.origin.url https://host/include-lib.git
+allow	git config user.name alias.bob
+allow	git config --unset core.hooksPath
+allow	git -c user.name=include commit -m ok
+allow	sudo ls
+allow	doas ls
+CASES
+check "writer is executable" '[ -x "$H" ]'
+
+# ── Detection (lib/status.sh): state from the event log, replayed from the T27 live session ──
+LIB="$HERE/skills/team/scripts/lib/status.sh"
+ev() { bash -c '. "$1"; _st_events "$2" "$3"' _ "$LIB" "$1" "$2"; }
+F="$W/det.jsonl"; : > "$F"
+add() { printf '%s\n' "$1" >> "$F"; }
+check "no log: nothing printed (older inference stays)" '[ -z "$(ev "$W/none.jsonl" 100)" ]'
+add '{"t":100,"ev":"SessionStart"}'; add '{"t":101,"ev":"UserPromptSubmit"}'
+add '{"t":102,"ev":"PreToolUse","tool":"Bash"}'
+check "tool running: WORKING, open tool, age from last event" '[ "$(ev "$F" 162)" = "WORKING 60 Bash" ]'
+add '{"t":103,"ev":"PermissionRequest","tool":"Bash"}'; add '{"t":104,"ev":"SubagentStop"}'
+check "permission request survives a later SubagentStop" '[ "$(ev "$F" 110)" = "PERMISSION 6 Bash" ]'
+add '{"t":120,"ev":"PostToolUse","tool":"Bash"}'
+check "approved: WORKING, tool closed" '[ "$(ev "$F" 120)" = "WORKING 0 -" ]'
+add '{"t":130,"ev":"PreToolUse","tool":"Edit"}'; add '{"t":131,"ev":"Notification","ntype":"permission_prompt"}'
+add '{"t":140,"ev":"UserPromptSubmit"}'
+check "denied then new turn: tool not left open" '[ "$(ev "$F" 140)" = "WORKING 0 -" ]'
+add '{"t":150,"ev":"Stop"}'
+check "Stop: IDLE" '[ "$(ev "$F" 150)" = "IDLE 0 -" ]'
+add '{"t":160,"ev":"Notification","ntype":"idle_prompt"}'
+check "idle_prompt: IDLE" '[ "$(ev "$F" 170)" = "IDLE 10 -" ]'
+add '{"t":180,"ev":"SessionEnd"}'
+check "SessionEnd: ENDED" '[ "$(ev "$F" 180)" = "ENDED 0 -" ]'
+: > "$F"; add '{"t":200,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":201,"ev":"SubagentStart","sub":1}'
+add '{"t":202,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":203,"ev":"PermissionRequest","tool":"Bash"}'
+add '{"t":204,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":205,"ev":"PostToolUse","tool":"Read","sub":1}'
+check "subagent tool events keep PERMISSION and the open tool, count as activity" '[ "$(ev "$F" 210)" = "PERMISSION 5 Bash" ]'
+add '{"t":206,"ev":"PostToolUse","tool":"Bash"}'; add '{"t":207,"ev":"PreToolUse","tool":"Read","sub":1}'
+check "subagent tool never opens a main-thread tool" '[ "$(ev "$F" 210)" = "WORKING 3 -" ]'
+: > "$F"; add '{"t":300,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":301,"ev":"SubagentStart","sub":1}'
+add '{"t":302,"ev":"PreToolUse","tool":"Bash","sub":1}'; add '{"t":303,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+check "a subagent's own permission request is PERMISSION" '[ "$(ev "$F" 1203)" = "PERMISSION 900 Agent" ]'
+add '{"t":310,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "its next tool result clears it" '[ "$(ev "$F" 310)" = "WORKING 0 Agent" ]'
+add '{"t":311,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":312,"ev":"PermissionDenied","tool":"Edit","sub":1}'
+check "a denied subagent request clears it" '[ "$(ev "$F" 312)" = "WORKING 0 Agent" ]'
+add '{"t":313,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":314,"ev":"PostToolUse","tool":"Agent"}'
+check "a main-thread event clears it" '[ "$(ev "$F" 314)" = "WORKING 0 -" ]'
+add '{"t":320,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":321,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+add '{"t":322,"ev":"Notification","ntype":"permission_prompt"}'; add '{"t":330,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "the prompt's notification belongs to the subagent: its tool result clears both" '[ "$(ev "$F" 330)" = "WORKING 0 Agent" ]'
+: > "$F"; add '{"t":400,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":401,"ev":"PermissionRequest","tool":"Bash"}'
+for i in $(seq 1 300); do add '{"t":402,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":403,"ev":"PostToolUse","tool":"Read","sub":1}'; done
+check "600 subagent lines after a main PermissionRequest: still PERMISSION" '[ "$(ev "$F" 410)" = "PERMISSION 7 Bash" ]'
+ln -s "$F" "$W/link.jsonl"
+check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
+st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
+check "_st_state: permission beats waiting" '[ "$(st "" tmux 1 "" 1 "" 1 1)" = PERMISSION ]'
+check "_st_state: no permission flag keeps WAITING" '[ "$(st "" tmux 1 "" 1 "" "" "")" = WAITING ]'
+
+# _st_row: a live tmux teammate (fake tmux, _alive stubbed) with an event log.
+RUN="$W/run"; mkdir -p "$RUN/status" "$RUN/events" "$W/bin"; printf '#!/bin/sh\n' > "$W/bin/tmux"; chmod +x "$W/bin/tmux"
+printf 'T1: investigating · 30%%\n' > "$RUN/status/q.txt"; touch -t 202001010000 "$RUN/status/q.txt"
+row() { PATH="$W/bin:$PATH" bash -c '. "$1"; _alive() { return 0; }; _reg() { echo "$2/team-$1.tabs"; }
+  _st_row "tmux %9 pane d1-q - - $3 - live" "$3" "" d1' _ "$LIB" "$W" "$RUN"; }
+now=$(date +%s)
+printf '{"t":%s,"ev":"PreToolUse","tool":"Bash"}\n' "$((now - 1200))" > "$RUN/events/q.jsonl"
+rec=$(row); f() { printf '%s' "$rec" | awk -F'\t' -v i="$1" '{print $i}'; }
+nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}'); empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
+check "row: 14 fields, none empty" '[ "$nf" = 14 ] && [ -z "$empty" ]'
+check "row: long tool open, so not stalled? despite 20 silent min" '[ "$(f 3)" = WORKING ] && [ "$(f 12)" = Bash ]'
+printf '{"t":%s,"ev":"PermissionRequest","tool":"Bash"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: PERMISSION under tmux, event fields carried" '[ "$(f 3)" = PERMISSION ] && [ "$(f 10)" = PERMISSION ] && [ "$(f 11)" -lt 60 ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: IDLE under tmux from Stop" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"PreToolUse","tool":"AskUserQuestion"}\n' "$((now - 700))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: open AskUserQuestion is WAITING with no notification (tmux)" '[ "$(f 3)" = WAITING ] && [ "$(f 12)" = AskUserQuestion ]'
+printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: 15 silent min, no open tool: stalled?" '[ "$(f 3)" = STALLED ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: measured IDLE 15 min old stays IDLE, not stalled?" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"SessionEnd"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: ENDED with a live pane is IDLE, not WORKING or stalled?" '[ "$(f 3)" = IDLE ] && [ "$(f 10)" = ENDED ]'
+rm -f "$RUN/events/q.jsonl"; rec=$(row)
+check "row: no log: old inference, dashes in event fields" '[ "$(f 3)" = STALLED ] && [ "$(f 10)" = - ] && [ "$(f 12)" = - ]'
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' q d1-q PERMISSION investigating x 1 - 30 2 PERMISSION 7 Bash > "$W/recs"
+js=$(bash -c '. "$1"; _st_json "$2" "$3/none.tabs" d1 < "$3/recs"' _ "$LIB" "$RUN" "$W")
+check "status --json: event_state, event_age_s, open_tool" 'python3 -I -c "import json,sys; m=json.loads(sys.argv[1])[\"teammates\"][0]; sys.exit(not (m[\"event_state\"]==\"PERMISSION\" and m[\"event_age_s\"]==7 and m[\"open_tool\"]==\"Bash\" and list(m)[-5:-2]==[\"event_state\",\"event_age_s\",\"open_tool\"]))" "$js"'
+
+echo; [ "$fails" = 0 ] && echo "all plugin-events tests passed" || { echo "$fails failed"; exit 1; }

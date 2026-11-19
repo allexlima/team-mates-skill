@@ -149,8 +149,9 @@ for cols in 20 30 40 50 72; do
   [ "${mw:-999}" -le "$cols" ] || bad+=" cols=$cols:maxwidth=$mw"
   if [ "$cols" -ge 40 ]; then
     # alert rows keep their state WORD (not just the glyph), every table row keeps its AGE
+    # (grep runs in UTF-8 like the frame: under the C locale `.` is one byte and misses the multi-byte glyph)
     grep -E 'r_abc' <<<"$f" | sed -n '1,2p' | grep -qiE 'waiting|dead' || bad+=" cols=$cols:alert-word-lost"
-    [ "$(grep -cE '^  . r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
+    [ "$(LC_ALL=$UTF8_LOC grep -cE '^  . r_abc.* [0-9]+m$' <<<"$f")" -ge 1 ] || bad+=" cols=$cols:age-lost"
   fi
 done
 [ -z "$bad" ] && pass "G7: widths 20-72 with 18-char roles + CJK: no line wider than the terminal; alert rows keep the state word and table rows their AGE at >=40 cols (decision 63)" \
@@ -615,8 +616,8 @@ printf 'plain step with no note\n' > "$RUNN/status/q.txt"
 rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
-{ [ "$nf" = 9 ] && [ -z "$empty" ]; } \
-  && pass "N10: _st_row emits 9 fields and never an empty one (tab-collapse shifts fields)" \
+{ [ "$nf" = 14 ] && [ -z "$empty" ]; } \
+  && pass "N10: _st_row emits 14 fields and never an empty one (tab-collapse shifts fields)" \
   || fail "N10: record field contract" "nf=$nf empty_at=[$empty] rec=[$rec]"
 
 # And the reader must land on the right field: pct, not elapsed.
@@ -624,6 +625,25 @@ got=$(printf '%s\n' "$rec" | bash -c 'IFS=$'"'"'\t'"'"' read -r a b c d e f g pc
 [ "$got" = "-" ] \
   && pass "N11: a positional read of the record lands pct on field 8, not elapsed" \
   || fail "N11: field alignment" "pct=[$got] rec=[$rec]"
+
+# N12  step-based progress: "T<n>: k/N · step" gives pct = k/N; "· NN%" stays the fallback.
+nrow() { printf '%s\n' "$1" > "$RUNN/status/q.txt"
+  LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null | awk -F'\t' '{print $8 "|" $13 "|" $14 "|" $5}'; }
+for c in 'T3: 2/5 · drafting tests|40|2|5|T3: 2/5 · drafting tests' \
+         'T3: 2/5 · drafting · 90%|40|2|5|T3: 2/5 · drafting' \
+         '3/4 · no task id|75|3|4|3/4 · no task id' \
+         'T3: drafting report · 70%|70|-|-|T3: drafting report' \
+         'T3: 7/5 · over|100|5|5|T3: 7/5 · over' \
+         'T3: 0/0 · nothing|-|-|-|T3: 0/0 · nothing' \
+         'T3: fixing 2/5 bugs|-|-|-|T3: fixing 2/5 bugs' \
+         'T3: 0/3 · starting|0|0|3|T3: 0/3 · starting'; do
+  in=${c%%|*} want=${c#*|}; got=$(nrow "$in")
+  [ "$got" = "$want" ] && pass "N12: '$in' gives pct|k|N|step $want" || fail "N12: '$in'" "got=[$got] want=[$want]"
+done
+printf 'T3: 2/5 · drafting\n' > "$RUNN/status/q.txt"
+js=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1 | _st_json "$3" "'"$TEAM_REG_DIR"'/none.tabs" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null)
+python3 -I -c 'import json,sys; m=json.loads(sys.argv[1])["teammates"][0]; sys.exit(not (m["pct"]==40 and m["step_k"]==2 and m["step_n"]==5 and list(m)[-2:]==["step_k","step_n"]))' "$js" \
+  && pass "N12: status --json carries step_k/step_n last, pct 40" || fail "N12: json step fields" "${js:0:300}"
 
 # ---------------------------------------------------------------------------
 # AC*  the monitor closes itself once every teammate is finished
@@ -680,17 +700,23 @@ if pid == 0:
     os.execvp('bash', ['bash', os.environ['TEAM_SH'], 'status', '--watch', 'aq'])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 100, 0, 0))
 time.sleep(3)
+tail = b''
 for _ in range(60):
     try: os.write(fd, b'q')   # re-send: a key typed between two reads waits for the next one
     except OSError: pass
     while select.select([fd], [], [], 0.5)[0]:   # drain, or a full tty buffer blocks the monitor
         try:
-            if not os.read(fd, 65536): break
+            d = os.read(fd, 65536)
+            if not d: break
+            tail = (tail + d)[-500:]
         except OSError: break
     r, st = os.waitpid(pid, os.WNOHANG)
     if r:
         print(os.waitstatus_to_exitcode(st)); sys.exit(0)
-os.kill(pid, 9); print('hung')
+# Evidence for the next flake: what the monitor last drew and what it was doing (this case hung once in a busy full run).
+import subprocess
+ps = subprocess.run(['ps', '-o', 'pid,ppid,stat,etime,command', '-g', str(os.getpgid(pid))], capture_output=True, text=True).stdout
+os.kill(pid, 9); print('hung\nlast pty output: %r\n%s' % (tail.decode('utf-8', 'replace'), ps))
 PY
 )
 [ "$aqrc" = 0 ] && pass "AQ1: q in the tty monitor exits 0" || fail "AQ1: q exit status" "rc=[$aqrc]"

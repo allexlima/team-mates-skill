@@ -133,7 +133,7 @@ a one-time pointer note is added to CLAUDE.local.md — never to CLAUDE.md):
     .team/facts.md             Consensus findings with evidence + date + run id;
                                every teammate reads it first and flags stale entries
     .team/roles/<role>.md      Roles saved in this project (override shared roles)
-    .team/runs/<date>-<team>/  tasks.md · prompts/ · reports/ · status/ · synthesis.md
+    .team/runs/<date>-<team>/  tasks.md · prompts/ · reports/ · status/ · events/ · synthesis.md
     .team/worktrees/           build-run worktrees (removed on shutdown if clean)
 Only conclusions and pointers are stored — never secrets, PII, or raw data.
 
@@ -158,8 +158,9 @@ On a new machine the shared library starts empty until you sync it.
     cmux + --tabs       A new tab per teammate in the current workspace
     In tmux (fallback)  Used when you run /team inside tmux but not cmux (or with --tmux).
                         Same two-column grid; --tabs gives one tmux window each. tmux has
-                        no hook feed, so the monitor can't show waiting or idle there
-                        (stalled? still shows after 10 silent minutes), there is no
+                        no notification feed, so waiting (AskUserQuestion) is not shown
+                        there; permission, idle and stalled? come from the event log
+                        (see the states below), there is no
                         sidebar pill, and clicking a row needs tmux's `mouse on` (the number keys always work).
     --inline            No panes: teammates run as subagents inside your session.
                         Works without cmux.
@@ -208,9 +209,10 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   `show` it (brings its pane to the front and moves focus there). A finished teammate has
   no pane; ask the lead to resume it.
 - Teammate *tool-permission* prompts appear in *their* pane — approve them there.
-  **Known limitation:** a prompt produces no notification, so the status pane cannot flag
-  it. The teammate shows `working` for about 10 minutes, then `stalled?`. If a teammate has
-  been quiet that long, ask the lead to `show` it (brings its pane to the front) before assuming a bug.
+  The status pane shows such a teammate as `permission` (from its event log). Without an
+  event log (the plugin did not load) a prompt produces no notification, so the teammate
+  shows `working` for about 10 minutes, then `stalled?`; if a teammate has been quiet that
+  long, ask the lead to `show` it (brings its pane to the front) before assuming a bug.
   (Haiku-tier teammates run in dontAsk mode and don't prompt; denied tools appear in
   their report.)
 - A teammate that needs your input or a decision forwards the question to the lead via
@@ -228,26 +230,35 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   plus a word, so colour is never the only cue; colour is off when output is not a terminal,
   `NO_COLOR` is set or `TERM=dumb`, and symbols fall back to ASCII in a non-UTF-8 locale.
   A `NEEDS YOU` block is pinned above the table only when a teammate is in one of the first
-  four states below; the STEP column is dropped below 60 columns.
-    waiting      AskUserQuestion notification detected — teammates must not use this;
+  five states below; the STEP column is dropped below 60 columns.
+    permission   Waiting on a tool-permission prompt (its event log's last main-thread
+                 event is a permission request): approve or deny it in its pane.
+    waiting      An AskUserQuestion still open in its event log, or without a log an
+                 AskUserQuestion notification — teammates must not use this;
                  `show` its pane and SendMessage it to send NEEDS INPUT to the lead instead.
                  Not detected for haiku/dontAsk tier.
     model gone   Its model is no longer available — respawn with a different model
     dead         Session exited — respawn it (a note says when its report is safe on disk)
-    stalled?     No status update for 10 minutes while mid-work. This is "no update in a
-                 while", not "stuck": a teammate in a long hook or subagent wait looks the
-                 same, so look at its pane before messaging it
+    stalled?     No status update in 10 minutes while mid-work; with an event log, no event
+                 in 10 minutes and no tool still running. This is "no update in a while",
+                 not "stuck": a subagent wait looks the same, so look at its pane before
+                 messaging it
     working      Doing its work (a note says "report on disk" once it has reported)
-    idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
-                 so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
+    idle         Turn ended with no report yet (a Stop, idle prompt or SessionEnd in the event
+                 log, or without a log cmux's "Completed" notification); routine while it waits
+                 on a peer or the lead, so it is not pinned under NEEDS YOU. A measured idle
+                 stays idle; one with no event log becomes stalled? after 10 minutes.
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
                  a ready task, on its own line or claimed by starting its status line with
                  "T<n>:". Hand it that task. A claimed task counts as assigned, not unassigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
-  Live teammates' state comes from the cmux hooks the claude shim injects — no screen
-  scraping. A finished teammate has no surface, so its state comes from the report on disk
+  Live teammates' state comes from the team plugin's event log and the cmux hooks the claude
+  shim injects — no screen scraping. The log is `.team/runs/<run>/events/<role>.jsonl`;
+  `status --json` carries the measured state per teammate as
+  `event_state`, `event_age_s` (seconds since its last event) and `open_tool` (a tool
+  still running), all null without a log. A finished teammate has no surface, so its state comes from the report on disk
   and its registry row.
   The status pane opens automatically (unless `--no-monitor`) and repaints only when the
   frame changes, checking every 30 s (override with `TEAM_STATUS_INTERVAL`). It exits when
@@ -275,9 +286,37 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   the same number as the pane.
   A PROGRESS bar and an `~ETA` appear per row when a teammate reports a percentage on its
   status line and the pane is wide enough to keep ROLE and STATE readable; STEP then drops
-  the repeated `· NN%`. All of these are **self-reported** — the teammate's own estimate,
+  the repeated `· NN%`. A teammate that has split its task into steps writes
+  `T<n>: k/N · <step>` instead; the % is then k/N (it wins over a `· NN%` on the same
+  line), STEP keeps the `k/N`, and `status --json` carries it as `step_k` and `step_n`. All of these are **self-reported** — the teammate's own estimate,
   since no measured per-teammate progress signal exists — so treat them as a rough
   indication, not a measurement.
+- **The TUI monitor.** When the status pane is a terminal and Textual is importable by
+  `python3` (or `uv` is installed, which fetches it on first use), the pane runs the
+  full-screen monitor in `scripts/monitor_tui.py` instead of the frame above. It shows the
+  same states, NEEDS YOU rows, overall % and team ETA (it reads `team.sh status --json` and
+  shows those numbers as they are, so both monitors always agree), plus: one card per live
+  teammate (state, task, step, a progress bar, its own ETA, a sparkline of its % over time,
+  the tool call in flight and how long it has run, context use and output tokens), the backlog
+  with an estimated finish per open task, an event log, and a detail view per teammate
+  (report, recent tool calls, progress history, session info). Keys: `1`-`9` focus that teammate's pane, arrows/tab move between cards,
+  `enter` or a click opens the detail view, `s` shows the selected pane, `r` refreshes,
+  `t` changes the theme, `?` lists keys and states, `q` quits (the team keeps running).
+  The per-task estimates are forecasts, not measurements: the backlog schedules every open
+  task over the live teammates, after its `needs:`, with each running task's remaining time
+  projected from its self-reported % and every other task given the typical task duration
+  seen so far. They can differ from the team ETA above, which stays status.sh's. Tokens,
+  context and the tool in flight are read (never written) from each teammate's Claude Code
+  transcript, `~/.claude/projects/*/<session-id>.jsonl`; a tool call running for many
+  minutes on a `stalled?` teammate is called out as a likely permission prompt. The
+  monitor keeps what it observed in `<run>/monitor/history.jsonl`, so a reopened monitor
+  keeps its sparklines and task timings. It refreshes every 5 s (`TEAM_TUI_INTERVAL`),
+  closes itself like the classic pane (`TEAM_MONITOR_AUTOCLOSE`, `TEAM_MONITOR_CLOSE_GRACE`),
+  and falls back to the classic pane if it cannot start. `TEAM_MONITOR_UI=classic` keeps
+  the classic pane; `TEAM_MONITOR_THEME` picks a Textual theme (default `tokyo-night`);
+  `TEAM_CONTEXT_WINDOW` sets the context size the % is measured against (default 200k, or
+  1M for a `[1m]` model). Try it with no team: `python3 scripts/monitor_tui.py --demo` (or
+  `uv run --script scripts/monitor_tui.py --demo` when only uv is installed).
 - Say "shut down the team" to close all teammate panes/tabs (the run record stays;
   clean worktrees are removed, branches and PRs stay).
 
@@ -319,13 +358,32 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   rules miss a git command that starts with a global option
   (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
   (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
-  `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
+  `claude -p` probes, CLI 2.1.306). For teammates with a run dir, the plugin fence below blocks those forms. The deny
   also fails safe the other way: a commit whose inline `-m` message names the flag is refused,
   so write such a message to a file and use `git commit -F <file>`.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
   (Read/Glob/Grep, SendMessage/ListAgents, Bash: git status/ls/wc/facts-lint/`cmux notify
   --title ...`, Edit on own report+tasks.md+status); TEAM_PERMISSION_MODE has no effect on
   haiku tier; they are refused on build runs.
+- A teammate with a run dir also loads the skill's `plugin/` folder for that session only
+  (`--plugin-dir`; nothing is written to your settings, and your own hooks and cmux's still
+  run). Without a run dir, spawn warns on stderr that the teammate runs without the event
+  log and fence.
+  - Event log: one line per hook event (time, event, tool name, notification type,
+    and a flag when a subagent raised it) in `.team/runs/<run>/events/<role>.jsonl`. Tool
+    input, prompts, messages and agent ids are never recorded.
+  - PreToolUse fence, enforced even in auto mode. It blocks Edit/Write/MultiEdit/
+    NotebookEdit outside the teammate's worktree, run dir and private scratch dir
+    (`$TEAM_SCRATCH`), so `/tmp` and `~/.claude` (memory, plans) are off limits; and git
+    commands that skip hooks (`--no-verify`, `commit -n`, core.hooksPath, aliases or
+    include files set with `-c`, `--config-env` or `git config`, and the `GIT_CONFIG*`
+    variables), also after `-C <dir>`, `sudo`, `env` or inside `sh -c`.
+  The fence does not make Bash safe. Every other Bash write is unfenced, and so is git run
+  through `eval`, backticks, `xargs` or another interpreter (`python3 -c`), git pointed at
+  another config with `HOME=` or `XDG_CONFIG_HOME=`, and aliases already in your git config.
+  If the plugin's hooks never run (for example under a managed
+  `allowManagedHooksOnly` policy), there is no event log and no fence. The plugin is named
+  `team-mates-events`; an installed plugin of that name is replaced for the session.
 - The hard cap is 8 teammates (spawn refuses beyond it).
 - Cost: every teammate is a full Claude session with its own context window,
   so cost scales with team size. Prefer 2–3 sharp roles; the lead already fits a model
