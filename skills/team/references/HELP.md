@@ -285,7 +285,9 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   the same number as the pane.
   A PROGRESS bar and an `~ETA` appear per row when a teammate reports a percentage on its
   status line and the pane is wide enough to keep ROLE and STATE readable; STEP then drops
-  the repeated `· NN%`. All of these are **self-reported** — the teammate's own estimate,
+  the repeated `· NN%`. A teammate that has split its task into steps writes
+  `T<n>: k/N · <step>` instead; the % is then k/N (it wins over a `· NN%` on the same
+  line), STEP keeps the `k/N`, and `status --json` carries it as `step_k` and `step_n`. All of these are **self-reported** — the teammate's own estimate,
   since no measured per-teammate progress signal exists — so treat them as a rough
   indication, not a measurement.
 - **The TUI monitor.** When the status pane is a terminal and Textual is importable by
