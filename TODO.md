@@ -24,6 +24,11 @@ Open items. Each one names where the work lives.
       step ran it inside a no-mistakes worktree, and passed in a normal checkout. Cause not found
       (reported by tm2-tui, not reproduced here). Run the suite from a worktree the gate created.
 
+- [ ] `tests/status-render.sh` AQ1 ("q in the tty monitor exits 0") hung once in four runs during a
+      busy full gate run (tm2-hooks): the pty driver saw no exit after 60 rounds of `q`. Not
+      reproduced: 10 of 10 passes with 14 CPU-burning processes. The test now prints the last 500
+      bytes of pty output and a `ps` snapshot when it hangs; read those on the next occurrence.
+
 ## Shell lint
 
 - [ ] v0.2.0: clean up `shellcheck -S warning`. shellcheck 0.11 reports 12 findings at that level
