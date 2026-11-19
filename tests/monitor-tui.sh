@@ -15,6 +15,14 @@ TUI="$(dirname "$TEAM_SH")/monitor_tui.py"
 LIB="$(dirname "$TEAM_SH")/lib/status.sh"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 fails=0; passes=0
+# A portable timeout: GNU `timeout` is absent from a stock macOS PATH.
+tmo() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"
+  else perl -e 'my $s = shift; my $p = fork; if (!$p) { exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill 15, $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+  fi
+}
 pass() { echo "PASS  $1"; passes=$((passes+1)); }
 fail() { echo "FAIL  $1${2:+ — $2}"; fails=$((fails+1)); }
 unset TEAM_MEMBER NO_COLOR TEAM_FORCE_COLOR TEAM_COLS TEAM_MONITOR_UI
@@ -96,6 +104,16 @@ st=$(cd "$G" && CMUX_GONE_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev
 [ "$st" = "WORKING DEAD" ] && pass "J4: compact identify JSON: live surface is WORKING, null pane_ref is DEAD" \
   || fail "J4: cmux identify parse" "$st"
 
+# ═══ B1 — no task lines, one of three finished, nobody reports a %: the classic bar and json bar_pct agree (33) ═══
+RUN2="$G/.team/runs/2026-11-18-j2"; mkdir -p "$RUN2/reports" "$RUN2/status"
+printf 'FINDINGS: x\nPARALLELISM: none\n' > "$RUN2/reports/c.md"
+{ echo "cmux surface:13 pane j2-a sonnet - $RUN2 $G live - -"; echo "cmux surface:14 pane j2-b sonnet - $RUN2 $G live - -"
+  echo "cmux surface:15 pane j2-c sonnet - $RUN2 $G finished - -"; } > "$W/reg/team-j2.tabs"
+cpct=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j2 2>/dev/null | grep -oE '[0-9]+%' | head -1)
+jpct=$(cd "$G" && bash "$TEAM_SH" status --json j2 2>/dev/null | python3 -I -c 'import json,sys; s=json.load(sys.stdin)["summary"]; print(s["bar_pct"], s["bar_est"])')
+[ "$cpct" = "33%" ] && [ "$jpct" = "33 False" ] && pass "B1: classic bar $cpct = json bar_pct (the TUI renders it verbatim)" \
+  || fail "B1: bar % mismatch" "classic=$cpct json=$jpct"
+
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
 frame=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)
 grep -q 'j1 · 2/5 tasks' <<<"$frame" && pass "J2: classic frame and status --json agree on 2/5 tasks" || fail "J2: classic frame counts" "$frame"
@@ -118,11 +136,19 @@ st=$(python3 -I "$TUI" --selftest 2>&1); rc=$?
   || fail "P1: monitor_tui.py --selftest" "$(grep FAIL <<<"$st")"
 
 # ═══ P2 — Textual render of the live fixture: header, a card, the backlog (skips without Textual) ═══
-if python3 -c 'import textual' 2>/dev/null; then
+# The TUI runs under python3 when it can import Textual, else under `uv run --script` (the PEP 723 header
+# pins Textual: the same path status.sh takes). TEAM_REQUIRE_TUI=1 (CI) turns "neither" into a failure.
+TUIRUN=()
+if python3 -c 'import textual' 2>/dev/null; then TUIRUN=(python3 "$TUI")
+elif command -v uv >/dev/null 2>&1; then TUIRUN=(uv run --quiet --script "$TUI"); fi
+if [ "${#TUIRUN[@]}" = 0 ] && [ "${TEAM_REQUIRE_TUI:-}" = 1 ]; then
+  fail "P2: TEAM_REQUIRE_TUI=1 but neither Textual nor uv is available" "the render and walk tests cannot run"
+fi
+if [ "${#TUIRUN[@]}" -gt 0 ]; then
   mkdir -p "$HOME/.claude/projects/-fx"
   printf '%s\n' '{"type":"assistant","timestamp":"2026-11-18T10:00:00Z","message":{"id":"m1","usage":{"input_tokens":1,"cache_read_input_tokens":99000,"output_tokens":5},"content":[{"type":"tool_use","id":"u1","name":"Bash","input":{"command":"pytest -q"}}]}}' \
     > "$HOME/.claude/projects/-fx/$S1.jsonl"
-  (cd "$G" && timeout 120 python3 "$TUI" --team j1 --team-sh "$TEAM_SH" --screenshot "$W/shot.svg" --size 140x40 >/dev/null 2>&1)
+  (cd "$G" && tmo 120 "${TUIRUN[@]}" --team j1 --team-sh "$TEAM_SH" --screenshot "$W/shot.svg" --size 140x40 >/dev/null 2>&1)
   txt=$(python3 -I -c 'import html,re,sys; print(html.unescape(re.sub(r"<[^>]+>", "", open(sys.argv[1]).read())).replace("\xa0"," "))' "$W/shot.svg" 2>/dev/null)
   miss=
   for want in 'TEAM-MATES' 'j1' 'api' 'T2' 'Backlog' 'implement retry' 'pytest -q' 'ctx 50%'; do
@@ -131,8 +157,8 @@ if python3 -c 'import textual' 2>/dev/null; then
   [ -z "$miss" ] && pass "P2: the TUI renders the live team: header, cards, backlog, and the tool in flight + context from the transcript" \
     || fail "P2: TUI render" "missing:$miss"
   # P4: every screen and key once (details + its tabs, help, theme, refresh, show), on the demo and the live fixture.
-  wd=$(timeout 120 python3 "$TUI" --demo --walk 2>&1); wdrc=$?
-  wl=$(cd "$G" && timeout 120 python3 "$TUI" --team j1 --team-sh "$TEAM_SH" --walk 2>&1); wlrc=$?
+  wd=$(tmo 120 "${TUIRUN[@]}" --demo --walk 2>&1); wdrc=$?
+  wl=$(cd "$G" && tmo 120 "${TUIRUN[@]}" --team j1 --team-sh "$TEAM_SH" --walk 2>&1); wlrc=$?
   [ "$wdrc" = 0 ] && [ "$wlrc" = 0 ] && pass "P4: the TUI walks every screen and key without a crash (demo + live fixture)" \
     || fail "P4: TUI walk" "demo rc=$wdrc $(tail -2 <<<"$wd" | tr '\n' ' ') live rc=$wlrc $(tail -2 <<<"$wl" | tr '\n' ' ')"
   ls "$RUN/monitor/history.jsonl" >/dev/null 2>&1 && pass "P3: the TUI keeps its history in <run>/monitor/history.jsonl" || fail "P3: history file" "none"
@@ -150,7 +176,7 @@ printf '#!/usr/bin/env bash\nshift; shift; shift; exec python3 "$@"\n' > "$W/xbi
 sed 's|^  \*) true ;;|  close-surface) echo "$*" >> "$CMUX_LOG" ;;\n  *) true ;;|' "$W/bin/cmux" > "$W/xbin/cmux"; chmod +x "$W/xbin/cmux"
 x1() {   # x1 <exit code of the stub TUI> -> prints what cmux saw
   printf 'import sys\nsys.exit(%s)\n' "$1" > "$SK/scripts/monitor_tui.py"; : > "$W/cmux.log"
-  (cd "$G" && CMUX_LOG="$W/cmux.log" PATH="$W/xbin:$PATH" TEAM_MONITOR_UI=auto timeout 30 python3 -c '
+  (cd "$G" && CMUX_LOG="$W/cmux.log" PATH="$W/xbin:$PATH" TEAM_MONITOR_UI=auto tmo 30 python3 -c '
 import pty, sys
 sys.exit(pty.spawn(["bash", sys.argv[1], "status", "--watch", "j1"]) >> 8)' "$SK/scripts/team.sh" >/dev/null 2>&1)
   cat "$W/cmux.log"
