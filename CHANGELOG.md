@@ -17,6 +17,10 @@ All notable changes to this project are recorded here. The format follows
   loads it (`--plugin-dir`) for every teammate with a run dir, and warns on
   stderr when there is none.
 - `clean` also removes finished teammates' scratch dirs and system prompts.
+- `status` reads live teammates' state from that event log, under tmux too: a
+  `permission` state for a tool-permission prompt, and measured idle and
+  activity age (see `--help`). `status --json` adds `event_state`,
+  `event_age_s` and `open_tool`.
 
 ### Fixed
 

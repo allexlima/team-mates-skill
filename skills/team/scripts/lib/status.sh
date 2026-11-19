@@ -34,8 +34,9 @@
 #
 # FLAGS column note — WAITING covers AskUserQuestion only (title="Claude question").
 # Tool-approval permission prompts go to `cmux hooks feed`, NOT list-notifications,
-# so a teammate blocked on a permission prompt shows no WAITING flag; STALLED? fires
-# after 10 min of filesystem silence. This is a known gap (probed by rev4-tests).
+# so without the team plugin's event log a teammate blocked on a permission prompt shows no
+# flag and STALLED? fires after 10 min of filesystem silence. With the log (_st_events) the
+# prompt is its own PERMISSION state, under tmux too.
 
 _ST_UUID_MAP=
 _ST_NOTIF_DATA=
@@ -104,7 +105,7 @@ if ! declare -f _reg_add >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled>
+# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled> [<permission>]
 # Pure: prints exactly one state token from the detection facts _st_row gathers.
 # Flags are 1 or empty; <alive> is 1 (surface exists), 0 (gone) or empty (unknown,
 # e.g. no cmux on PATH). Decision order, first match wins:
@@ -114,18 +115,23 @@ fi
 #   UNKNOWN     not a cmux row, or liveness unknown: never rendered as alive
 #   DEAD        surface gone without the marker
 #   MODEL_GONE  model (or subagent model) no longer offered
-#   WAITING     newest notification is an AskUserQuestion ("Claude question")
-#   STALLED     mid-work milestone, no status/report write for >=10 min
-#   IDLE        newest notification is "Completed in …" and no report on disk
-#               (routine while waiting on a peer; after 10 silent min it is STALLED)
+#   PERMISSION  the event log's last state-bearing event is a permission request (_st_events)
+#   WAITING     an AskUserQuestion still open in the event log; without a log, the newest
+#               notification is an AskUserQuestion ("Claude question")
+#   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
+#               measured WORKING with no event and no open tool for >=10 min
+#   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
+#               or without a log the newest notification is "Completed in …" (routine while
+#               waiting on a peer; after 10 silent min it is STALLED)
 #   WORKING     everything else (including "report on disk" while still alive)
 # ---------------------------------------------------------------------------
 _st_state() {
-  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7
+  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7 perm=${8:-}
   if [ -n "$fin" ]; then echo FINISHED
   elif { [ "$backend" != cmux ] && [ "$backend" != tmux ]; } || [ -z "$alive" ]; then echo UNKNOWN
   elif [ "$alive" != 1 ]; then echo DEAD
   elif [ -n "$gone" ]; then echo MODEL_GONE
+  elif [ -n "$perm" ]; then echo PERMISSION
   elif [ -n "$waiting" ]; then echo WAITING
   elif [ -n "$stalled" ]; then echo STALLED
   elif [ -n "$idle" ]; then echo IDLE
@@ -134,8 +140,65 @@ _st_state() {
 }
 
 # ---------------------------------------------------------------------------
+# _st_events <events-file> <now-epoch>: teammate state from the plugin's hook log
+# (skills/team/plugin, one {"t","ev","tool","ntype"} line per event). Prints one line
+#   <state> <activity_age_s> <open_tool|->
+# or nothing when the file is missing or empty (no plugin hooks ran: callers keep the
+# older notification/silence inference). Live teammates only: a finished one has no log
+# that matters, so callers skip this once the row is finished.
+# The last state-bearing event decides, first match wins:
+#   PermissionRequest, Notification/permission_prompt     -> PERMISSION
+#   Stop, StopFailure, Notification/idle_prompt           -> IDLE
+#   SessionEnd                                             -> ENDED
+#   anything else (SessionStart, UserPromptSubmit, Pre/PostToolUse, ...) -> WORKING
+# SubagentStart/SubagentStop never change state: a background subagent's SubagentStop can
+# land after a PermissionRequest (T27 spike) and would otherwise clear it; they still count
+# as activity. <open_tool> is the tool of a PreToolUse with no later PostToolUse(Failure),
+# PermissionDenied, UserPromptSubmit (a new turn: a denied tool never gets a PostToolUse),
+# Stop or SessionEnd: a long tool is running, so silence is not a stall.
+# A subagent's events ("sub":1) count as activity only: the main thread's state and open tool
+# are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
+# user too: it shows PERMISSION until the next subagent tool result or denial (subagents are
+# not told apart, so any subagent's clears it), or until any main-thread event.
+# Reads only the last 2000 lines; the writer's fixed format lets awk parse it.
+# shortcut: about 1000 subagent tool calls after a main PermissionRequest still push it out of
+# view (the row falls back to the older inference); scan backwards for the last main-thread
+# line if that shows up in practice.
+# ---------------------------------------------------------------------------
+_st_events() {
+  local f=$1 now=$2
+  [ -s "$f" ] && [ ! -L "$f" ] || return 0
+  tail -n 2000 "$f" 2>/dev/null | awk -v now="$now" '
+    function val(k,   s) { if (!match($0, "\"" k "\": *\"?[A-Za-z0-9_.:-]+")) return ""
+      s = substr($0, RSTART, RLENGTH); sub(/^"[^"]*": *"?/, "", s); return s }
+    { t = val("t") + 0; ev = val("ev"); if (ev == "" || t == 0) next
+      last = t
+      if (val("sub") == "1") {
+        if (ev == "PermissionRequest") subperm = 1
+        else if (ev == "PostToolUse" || ev == "PostToolUseFailure" || ev == "PermissionDenied") subperm = 0
+        next }
+      if (ev == "SubagentStart" || ev == "SubagentStop") next
+      nt = val("ntype")
+      # the notification raised by a subagent prompt carries no agent_id: it is that same prompt
+      if (subperm && ev == "Notification" && nt == "permission_prompt") next
+      subperm = 0
+      tool = val("tool")
+      if (ev == "PermissionRequest" || (ev == "Notification" && nt == "permission_prompt")) state = "PERMISSION"
+      else if (ev == "Stop" || ev == "StopFailure" || (ev == "Notification" && nt == "idle_prompt")) { state = "IDLE"; open = "" }
+      else if (ev == "SessionEnd") { state = "ENDED"; open = "" }
+      else if (ev == "Notification") next
+      else state = "WORKING"
+      if (ev == "PreToolUse") open = (tool == "" ? "?" : tool)
+      else if (ev == "PostToolUse" || ev == "PostToolUseFailure" || ev == "PermissionDenied" || ev == "UserPromptSubmit") open = ""
+    }
+    END { if (subperm) state = "PERMISSION"; if (state == "") exit; a = now - last; if (a < 0) a = 0
+          printf "%s %d %s\n", state, a, (open == "" ? "-" : open) }'
+}
+
+# ---------------------------------------------------------------------------
 # _st_row <row> <run> <leadpane> <team>: one TAB-separated record per teammate
-#   role  title  state  milestone  step  age_min(-1 = none)  note
+#   role  title  state  milestone  step  age_min(-1 = none)  note  pct  elapsed
+#   event_state  event_age_s  open_tool   ('-' each when the teammate has no event log)
 # Detection only (decision 7): gathers the facts and asks _st_state for the token;
 # _st_frame does all layout. Reads module globals: _ST_UUID_MAP, _ST_NOTIF_DATA
 # ---------------------------------------------------------------------------
@@ -328,7 +391,27 @@ _st_row() {
     fi
   fi
 
-  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled")
+  # Measured state from the plugin's event log (live rows only: a finished teammate's log is
+  # history). It wins over the silence and notification inference above, under tmux too:
+  # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
+  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
+  # waiting only from an open AskUserQuestion, and a permission request is its own state.
+  local evs=- eva=- evt=- perm= _ev
+  if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
+    read -r evs eva evt <<<"$_ev"
+    idle= stalled= waiting=
+    case $evs in
+      PERMISSION) perm=1 ;;
+      IDLE|ENDED) [ "$ms" = reported ] || idle=1 ;;
+    esac
+    # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
+    [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
+    case $ms in spawned|investigating|drafting)
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
+    esac
+  fi
+
+  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled" "$perm")
 
   # Notes: context a token alone cannot carry
   local note=
@@ -337,11 +420,11 @@ _st_row() {
   elif [ "$state" = DEAD ] && [ -n "$rpt" ] && [ -f "$rpt" ]; then note="report safe; resume unavailable"
   fi
 
-  # Record contract: 9 TAB-separated fields, NONE of them empty. Tab is IFS
+  # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt"
 }
 
 # _st_records <reg> <run> <leadpane> <team>: one _st_row record per non-dash teammate
@@ -471,7 +554,9 @@ for line in sys.stdin:
         try: return int(x)
         except ValueError: return -1
     recs[f[1]] = dict(role=f[0], state=f[2], ms=f[3], step=f[4], age=num(f[5]),
-                      note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]))
+                      note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]),
+                      evs=f[9] if len(f) > 11 else '-', eva=num(f[10]) if len(f) > 11 else -1,
+                      evt=f[11] if len(f) > 11 else '-')
 tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
@@ -580,7 +665,9 @@ for title, r in recs.items():
         submodel=dash(g.get('submodel', '-')), session_id=dash(g.get('session_id', '-')),
         cwd=cwd, branch=branch(cwd) if cwd and '/.team/worktrees/' in cwd else None,
         report=rp if rp and os.path.isfile(rp) else None, report_mtime=mtime(rp) if rp else None,
-        status_mtime=mtime(sp) if sp else None))
+        status_mtime=mtime(sp) if sp else None,
+        event_state=dash(r['evs']), event_age_s=None if r['eva'] < 0 else r['eva'],
+        open_tool=dash(r['evt'])))
 def split_rest(rest):
     parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
     out = dict(scope=parts[0].strip() or None, owns=None)
@@ -636,7 +723,8 @@ sys.stdout.reconfigure(encoding='ascii' if ascii_ else 'utf-8', errors='replace'
 PAL = {'alert': (0xFF, 0x45, 0x3A), 'active': (0xAF, 0x52, 0xDE),
        'done': (0x30, 0xD1, 0x58), 'dim': (0x8E, 0x8E, 0x93)}
 #        token        utf8 ascii  word           role
-STATES = {'WAITING':   ('⏸', '!', 'waiting',     'alert'),
+STATES = {'PERMISSION':('⊘', '!', 'permission',  'alert'),
+          'WAITING':   ('⏸', '!', 'waiting',     'alert'),
           'MODEL_GONE':('⚠', 'M', 'model gone',  'alert'),
           'DEAD':      ('✗', 'x', 'dead',        'alert'),
           'STALLED':   ('⧗', '~', 'stalled?',    'alert'),
@@ -645,7 +733,7 @@ STATES = {'WAITING':   ('⏸', '!', 'waiting',     'alert'),
           'UNKNOWN':   ('?', '?', 'unknown',     'dim'),
           'FINISHED':  ('✓', '+', 'finished',    'done')}
 ORDER = list(STATES)  # alerts first (most urgent first), then working, unknown, finished
-HINT = {'WAITING': 'answer it in its pane', 'MODEL_GONE': 'model no longer offered',
+HINT = {'PERMISSION': 'approve it in its pane', 'WAITING': 'answer it in its pane', 'MODEL_GONE': 'model no longer offered',
         'DEAD': 'pane gone; respawn or check',
         'STALLED': 'no update; maybe a permission prompt'}
 
@@ -1322,7 +1410,7 @@ _st_sync_apply() {
     total=$((total + 1))
     { [ "$ms" = reported ] || [ "$state" = FINISHED ]; } && reported=$((reported + 1))
     [ "$ms" != spawned ] && started=1
-    case $state in WAITING|DEAD|MODEL_GONE|STALLED) needs=$((needs + 1)) ;; esac
+    case $state in PERMISSION|WAITING|DEAD|MODEL_GONE|STALLED) needs=$((needs + 1)) ;; esac
     if [ "$ms" = reported ] || [ "$state" = FINISHED ]; then
       pctsum=$((pctsum + 100)); pctn=$((pctn + 1))
     elif [ -n "${pct:-}" ] && [ "$pct" != - ] && [ "$pct" -ge 0 ] 2>/dev/null; then
@@ -1391,6 +1479,7 @@ _st_sync_apply() {
     msg= lvl=
     if [ -z "$prev" ] || [ "$state" != "$pstate" ]; then
       case $state in
+        PERMISSION) msg="waiting on a permission prompt" lvl=warning ;;
         WAITING)    msg="waiting (needs input)" lvl=warning ;;
         IDLE)       msg="idle (turn ended without a report)" lvl=info ;;
         STALLED)    msg="stalled?" lvl=warning ;;

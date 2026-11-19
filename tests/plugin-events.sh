@@ -37,6 +37,13 @@ check "multi-line payload: later lines ignored" '! grep -q Leak "$E"'
 mcp=mcp__plugin_fe-ai-tools_fe-vending-machine__auto_approve_extension_requests
 printf '{"tool_name":"%s","tool_input":{}}' "$mcp" | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
 check "75-char MCP tool name kept" '[ ${#mcp} = 75 ] && tail -1 "$E" | grep -q "\"tool\":\"$mcp\"}"'
+# Key order and agent_id seen on claude 2.1.323: a subagent's events carry a top-level agent_id
+# before tool_input; the main thread's do not. Only a value-free flag is logged.
+printf '%s' '{"session_id":"s","cwd":"/c","prompt_id":"p","permission_mode":"default","agent_id":"a7f3e9","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"}}' \
+  | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "subagent event: sub flag, no agent id" 'tail -1 "$E" | grep -q "\"ev\":\"PreToolUse\",\"tool\":\"Read\",\"sub\":1}" && ! grep -qE "a7f3e9|general-purpose" "$E"'
+printf '%s' '{"cwd":"/x\"agent_id\":\"y","tool_name":"Read","tool_input":{"agent_id":"z"}}' | TEAM_EVENTS_FILE="$E" sh "$H" PreToolUse
+check "agent_id inside a value or tool_input: no sub flag" '! tail -1 "$E" | grep -q sub'
 
 n=$(wc -l <"$E")
 printf '{}' | env -u TEAM_EVENTS_FILE sh "$H" Stop
@@ -186,5 +193,89 @@ allow	sudo ls
 allow	doas ls
 CASES
 check "writer is executable" '[ -x "$H" ]'
+
+# ── Detection (lib/status.sh): state from the event log, replayed from the T27 live session ──
+LIB="$HERE/skills/team/scripts/lib/status.sh"
+ev() { bash -c '. "$1"; _st_events "$2" "$3"' _ "$LIB" "$1" "$2"; }
+F="$W/det.jsonl"; : > "$F"
+add() { printf '%s\n' "$1" >> "$F"; }
+check "no log: nothing printed (older inference stays)" '[ -z "$(ev "$W/none.jsonl" 100)" ]'
+add '{"t":100,"ev":"SessionStart"}'; add '{"t":101,"ev":"UserPromptSubmit"}'
+add '{"t":102,"ev":"PreToolUse","tool":"Bash"}'
+check "tool running: WORKING, open tool, age from last event" '[ "$(ev "$F" 162)" = "WORKING 60 Bash" ]'
+add '{"t":103,"ev":"PermissionRequest","tool":"Bash"}'; add '{"t":104,"ev":"SubagentStop"}'
+check "permission request survives a later SubagentStop" '[ "$(ev "$F" 110)" = "PERMISSION 6 Bash" ]'
+add '{"t":120,"ev":"PostToolUse","tool":"Bash"}'
+check "approved: WORKING, tool closed" '[ "$(ev "$F" 120)" = "WORKING 0 -" ]'
+add '{"t":130,"ev":"PreToolUse","tool":"Edit"}'; add '{"t":131,"ev":"Notification","ntype":"permission_prompt"}'
+add '{"t":140,"ev":"UserPromptSubmit"}'
+check "denied then new turn: tool not left open" '[ "$(ev "$F" 140)" = "WORKING 0 -" ]'
+add '{"t":150,"ev":"Stop"}'
+check "Stop: IDLE" '[ "$(ev "$F" 150)" = "IDLE 0 -" ]'
+add '{"t":160,"ev":"Notification","ntype":"idle_prompt"}'
+check "idle_prompt: IDLE" '[ "$(ev "$F" 170)" = "IDLE 10 -" ]'
+add '{"t":180,"ev":"SessionEnd"}'
+check "SessionEnd: ENDED" '[ "$(ev "$F" 180)" = "ENDED 0 -" ]'
+: > "$F"; add '{"t":200,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":201,"ev":"SubagentStart","sub":1}'
+add '{"t":202,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":203,"ev":"PermissionRequest","tool":"Bash"}'
+add '{"t":204,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":205,"ev":"PostToolUse","tool":"Read","sub":1}'
+check "subagent tool events keep PERMISSION and the open tool, count as activity" '[ "$(ev "$F" 210)" = "PERMISSION 5 Bash" ]'
+add '{"t":206,"ev":"PostToolUse","tool":"Bash"}'; add '{"t":207,"ev":"PreToolUse","tool":"Read","sub":1}'
+check "subagent tool never opens a main-thread tool" '[ "$(ev "$F" 210)" = "WORKING 3 -" ]'
+: > "$F"; add '{"t":300,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":301,"ev":"SubagentStart","sub":1}'
+add '{"t":302,"ev":"PreToolUse","tool":"Bash","sub":1}'; add '{"t":303,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+check "a subagent's own permission request is PERMISSION" '[ "$(ev "$F" 1203)" = "PERMISSION 900 Agent" ]'
+add '{"t":310,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "its next tool result clears it" '[ "$(ev "$F" 310)" = "WORKING 0 Agent" ]'
+add '{"t":311,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":312,"ev":"PermissionDenied","tool":"Edit","sub":1}'
+check "a denied subagent request clears it" '[ "$(ev "$F" 312)" = "WORKING 0 Agent" ]'
+add '{"t":313,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":314,"ev":"PostToolUse","tool":"Agent"}'
+check "a main-thread event clears it" '[ "$(ev "$F" 314)" = "WORKING 0 -" ]'
+add '{"t":320,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":321,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+add '{"t":322,"ev":"Notification","ntype":"permission_prompt"}'; add '{"t":330,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "the prompt's notification belongs to the subagent: its tool result clears both" '[ "$(ev "$F" 330)" = "WORKING 0 Agent" ]'
+: > "$F"; add '{"t":400,"ev":"PreToolUse","tool":"Bash"}'; add '{"t":401,"ev":"PermissionRequest","tool":"Bash"}'
+for i in $(seq 1 300); do add '{"t":402,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":403,"ev":"PostToolUse","tool":"Read","sub":1}'; done
+check "600 subagent lines after a main PermissionRequest: still PERMISSION" '[ "$(ev "$F" 410)" = "PERMISSION 7 Bash" ]'
+ln -s "$F" "$W/link.jsonl"
+check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
+st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
+check "_st_state: permission beats waiting" '[ "$(st "" tmux 1 "" 1 "" 1 1)" = PERMISSION ]'
+check "_st_state: no permission flag keeps WAITING" '[ "$(st "" tmux 1 "" 1 "" "" "")" = WAITING ]'
+
+# _st_row: a live tmux teammate (fake tmux, _alive stubbed) with an event log.
+RUN="$W/run"; mkdir -p "$RUN/status" "$RUN/events" "$W/bin"; printf '#!/bin/sh\n' > "$W/bin/tmux"; chmod +x "$W/bin/tmux"
+printf 'T1: investigating · 30%%\n' > "$RUN/status/q.txt"; touch -t 202001010000 "$RUN/status/q.txt"
+row() { PATH="$W/bin:$PATH" bash -c '. "$1"; _alive() { return 0; }; _reg() { echo "$2/team-$1.tabs"; }
+  _st_row "tmux %9 pane d1-q - - $3 - live" "$3" "" d1' _ "$LIB" "$W" "$RUN"; }
+now=$(date +%s)
+printf '{"t":%s,"ev":"PreToolUse","tool":"Bash"}\n' "$((now - 1200))" > "$RUN/events/q.jsonl"
+rec=$(row); f() { printf '%s' "$rec" | awk -F'\t' -v i="$1" '{print $i}'; }
+nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}'); empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
+check "row: 12 fields, none empty" '[ "$nf" = 12 ] && [ -z "$empty" ]'
+check "row: long tool open, so not stalled? despite 20 silent min" '[ "$(f 3)" = WORKING ] && [ "$(f 12)" = Bash ]'
+printf '{"t":%s,"ev":"PermissionRequest","tool":"Bash"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: PERMISSION under tmux, event fields carried" '[ "$(f 3)" = PERMISSION ] && [ "$(f 10)" = PERMISSION ] && [ "$(f 11)" -lt 60 ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: IDLE under tmux from Stop" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"PreToolUse","tool":"AskUserQuestion"}\n' "$((now - 700))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: open AskUserQuestion is WAITING with no notification (tmux)" '[ "$(f 3)" = WAITING ] && [ "$(f 12)" = AskUserQuestion ]'
+printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: 15 silent min, no open tool: stalled?" '[ "$(f 3)" = STALLED ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: measured IDLE 15 min old stays IDLE, not stalled?" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"SessionEnd"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: ENDED with a live pane is IDLE, not WORKING or stalled?" '[ "$(f 3)" = IDLE ] && [ "$(f 10)" = ENDED ]'
+rm -f "$RUN/events/q.jsonl"; rec=$(row)
+check "row: no log: old inference, dashes in event fields" '[ "$(f 3)" = STALLED ] && [ "$(f 10)" = - ] && [ "$(f 12)" = - ]'
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' q d1-q PERMISSION investigating x 1 - 30 2 PERMISSION 7 Bash > "$W/recs"
+js=$(bash -c '. "$1"; _st_json "$2" "$3/none.tabs" d1 < "$3/recs"' _ "$LIB" "$RUN" "$W")
+check "status --json: event_state, event_age_s, open_tool" 'python3 -I -c "import json,sys; m=json.loads(sys.argv[1])[\"teammates\"][0]; sys.exit(not (m[\"event_state\"]==\"PERMISSION\" and m[\"event_age_s\"]==7 and m[\"open_tool\"]==\"Bash\" and list(m)[-3:]==[\"event_state\",\"event_age_s\",\"open_tool\"]))" "$js"'
 
 echo; [ "$fails" = 0 ] && echo "all plugin-events tests passed" || { echo "$fails failed"; exit 1; }
