@@ -40,6 +40,8 @@ All notable changes to this project are recorded here. The format follows
 
 - The monitor reads the context window of 1M-token models correctly, and
   `status --json --sync` polls about twice as fast with 7 live teammates. (#14)
+- The TUI's token total (`Σ … out`) counts output tokens, not cache re-reads,
+  which had inflated it. (#14)
 
 ### Fixed
 
@@ -54,8 +56,6 @@ All notable changes to this project are recorded here. The format follows
   is not found. The test prints the pty tail and a `ps` snapshot when it hangs.
   (#15)
 - Mouse clicks in the TUI under cmux are unverified.
-- The TUI's token total counts cache re-reads, so it overstates distinct
-  context.
 
 ## [0.1.1] - 2026-11-18
 
