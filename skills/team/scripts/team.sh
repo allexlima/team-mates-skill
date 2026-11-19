@@ -51,10 +51,14 @@
 #                                             <run>/tasks.md, and the standing instructions. --build adds the worktree, git and gate
 #                                             rules (--no-gate: leave commits on the branch). --run defaults to the newest
 #                                             .team/runs/*-<team>. exit 2 bad option/missing task, 3 no run dir or template
-#   team.sh status [--watch] <team>        -> one frame: "<team> · N/M reported · HH:MM:SS", a progress bar, a NEEDS YOU block
+#   team.sh status [--watch | --json [--sync]] <team>
+#                                          -> one frame: "<team> · N/M reported · HH:MM:SS", a progress bar, a NEEDS YOU block
 #                                             (only when a teammate is waiting/dead/model gone/stalled?), then ROLE | STATE | STEP | AGE;
 #                                             --watch repaints only on change, syncs the sidebar each tick and exits once
-#                                             the registry is removed. Width: TEAM_COLS, else tput cols. exit 3 no registry
+#                                             the registry is removed; in a terminal it runs the TUI monitor (monitor_tui.py)
+#                                             when Textual or uv is available (TEAM_MONITOR_UI=classic: never).
+#                                             --json: the same state as one JSON document (version 1; keys are only added),
+#                                             --sync also updates the sidebar. Width: TEAM_COLS, else tput cols. exit 3 no registry
 #   team.sh monitor <team>                 -> open one pane running `status --watch` (layout dash, title
 #                                             <team>-monitor; not a teammate, not in the cap; `close` closes it).
 #                                             exit 1 already running

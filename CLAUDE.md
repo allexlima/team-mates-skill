@@ -25,7 +25,7 @@ table are relative to `skills/team/` (`HELP.md`, `teammate-rules.md` and
 | Role resolution order | `team.sh role` (code) + `SKILL.md` S2 (one sentence) | `HELP.md` and `README.md` are word-for-word summaries |
 | Role content format (the five headings) | `SKILL.md` (the save-role step) | — |
 | Project facts | `.team/facts.md` only | roles never hold facts; the shared library never holds project content |
-| Monitor interaction (row keys, click, PROGRESS/ETA) | `HELP.md` (the monitor paragraph) | `scripts/lib/status.sh` holds the behaviour; the teammate-side `· NN%` rule is owned by `teammate-rules.md`. The percentage is self-reported — never describe it as measured. |
+| Monitor interaction (row keys, click, PROGRESS/ETA, the TUI) | `HELP.md` (the monitor paragraphs) | `scripts/lib/status.sh` holds the state detection and the `status --json` contract; `scripts/monitor_tui.py` only renders that JSON (plus transcripts and its forecast) and never re-derives a state; the teammate-side `· NN%` rule is owned by `teammate-rules.md`. The percentage is self-reported — never describe it as measured. |
 | Live vs. finished teammate state | `SKILL.md` step 4 (one sentence) | `HELP.md` says the same thing in the same words. Hook-based state covers *live* teammates only; a finished one has no surface, so its state is read from disk + registry. Do not "fix" this back to hooks. |
 | Role vs. knowledge | role spec = *how to work* (lens, constraints, tier, lessons); `.team/facts.md` = *what is true here* | neither stores the other |
 
@@ -77,11 +77,11 @@ bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
 bash tests/status-render.sh   # monitor frames, widths, colour gate
+bash tests/monitor-tui.sh     # status --json contract, TUI forecast/transcripts (render skips without Textual)
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
 bash tests/prompt.sh          # team.sh prompt: template rendering, build/gate blocks, exit codes
 bash tests/plugin-events.sh   # event-hook writer: 4 fields only, no tool input
-bash tests/monitor-tui.sh     # once the file is on dev; needs Textual for full coverage
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 

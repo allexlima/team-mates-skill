@@ -26,6 +26,10 @@ jobs:
       - name: Install tmux and shellcheck (macos)
         if: runner.os == 'macOS'
         run: brew install tmux shellcheck
+      - name: Install uv (renders the TUI in tests/monitor-tui.sh)
+        run: |
+          pipx install uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Git identity for tests
         run: |
           git config --global user.name ci
@@ -44,6 +48,8 @@ jobs:
           bash tests/tmux.sh
           bash tests/prompt.sh
           # Suites that land in other PRs: skipped until their file is on this branch.
-          for t in tests/plugin-events.sh tests/monitor-tui.sh; do
+          for t in tests/plugin-events.sh; do
             if [ -f "$t" ]; then bash "$t"; else echo "skip $t (not on this branch yet)"; fi
           done
+          # The render and key-walk cases need Textual (via uv); CI fails if they would skip.
+          TEAM_REQUIRE_TUI=1 bash tests/monitor-tui.sh
