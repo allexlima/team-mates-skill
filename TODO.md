@@ -93,8 +93,9 @@ Reported by tm2-hooks (`feat/hook-spawn`, `feat/hook-fence`; not yet in `dev`); 
 - [ ] `TEAM_FENCE_ROOTS` is `:`-separated, so a worktree or run path containing `:` splits into
       wrong roots. It fails closed (writes there are denied). Fix only if someone hits it.
 - [ ] The PreToolUse fence (feat/hook-fence @8018736) covers Edit/Write/MultiEdit/NotebookEdit
-      paths and the git hook-skip forms, including global options, `sudo`, `doas`, `env -S`, `$(...)`
-      and `time --output`. Still allowed: `eval "git commit ..."`, backticks, `xargs git commit`,
+      paths and the git hook-skip forms, including global options, `sudo`, `doas`, `env -S "..."`
+      and `$(...)`. Still allowed: `eval "git commit ..."`, backticks, `xargs git commit`,
+      `env -S"..."` or `env --split-string=...`, `time --output f` or `--format f`,
       `HOME=<dir>` or `XDG_CONFIG_HOME=<dir>` pointing git at another global config, aliases in
       the user's own git config (`ci=commit -n`), git run from another interpreter
       (`python3 -c "os.system(...)"`), and every other Bash write (`echo hi > /tmp/file`). A real
