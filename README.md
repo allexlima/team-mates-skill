@@ -76,7 +76,7 @@ A status pane opens next to the teammates while the team runs. With [Textual](ht
 </p>
 <p align="center"><sub>Illustrative demo: a synthetic team played by <code>monitor_tui.py --demo</code>, not a real run. Re-record with <code>vhs assets/readme/tapes/monitor.tape</code>.</sub></p>
 
-Teammates report their own percentages, so treat the progress and ETA as rough estimates. Try the monitor without a team: `uv run --script skills/team/scripts/monitor_tui.py --demo`.
+Teammates report their own percentages, so treat the progress and ETA as rough estimates. Try the monitor without a team: `uv run --script ~/.claude/skills/team/scripts/monitor_tui.py --demo` (or `python3 ~/.claude/skills/team/scripts/monitor_tui.py --demo` with Textual installed).
 
 ## Project memory
 
