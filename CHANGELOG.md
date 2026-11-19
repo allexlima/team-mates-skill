@@ -10,6 +10,11 @@ All notable changes to this project are recorded here. The format follows
 
 - `team.sh prompt`, which renders each teammate prompt from
   `references/prompt-template.md` plus a short per-run brief.
+- `plugin/`, a session-only hook plugin whose `event.sh` appends one line per
+  Claude Code event (time, event, tool name, notification type; never tool
+  input) to `$TEAM_EVENTS_FILE`, and whose PreToolUse `fence.py` denies
+  edits outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. Nothing
+  loads it yet.
 
 ## [0.1.1] - 2026-11-18
 
