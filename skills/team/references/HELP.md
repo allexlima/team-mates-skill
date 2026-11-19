@@ -345,7 +345,7 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   rules miss a git command that starts with a global option
   (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
   (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
-  `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
+  `claude -p` probes, CLI 2.1.306). For teammates with a run dir, the plugin fence below blocks those forms. The deny
   also fails safe the other way: a commit whose inline `-m` message names the flag is refused,
   so write such a message to a file and use `git commit -F <file>`.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
