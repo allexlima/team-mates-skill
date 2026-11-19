@@ -615,8 +615,8 @@ printf 'plain step with no note\n' > "$RUNN/status/q.txt"
 rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
-{ [ "$nf" = 9 ] && [ -z "$empty" ]; } \
-  && pass "N10: _st_row emits 9 fields and never an empty one (tab-collapse shifts fields)" \
+{ [ "$nf" = 12 ] && [ -z "$empty" ]; } \
+  && pass "N10: _st_row emits 12 fields and never an empty one (tab-collapse shifts fields)" \
   || fail "N10: record field contract" "nf=$nf empty_at=[$empty] rec=[$rec]"
 
 # And the reader must land on the right field: pct, not elapsed.

@@ -158,8 +158,9 @@ On a new machine the shared library starts empty until you sync it.
     cmux + --tabs       A new tab per teammate in the current workspace
     In tmux (fallback)  Used when you run /team inside tmux but not cmux (or with --tmux).
                         Same two-column grid; --tabs gives one tmux window each. tmux has
-                        no hook feed, so the monitor can't show waiting or idle there
-                        (stalled? still shows after 10 silent minutes), there is no
+                        no notification feed, so waiting (AskUserQuestion) is not shown
+                        there; permission, idle and stalled? come from the event log
+                        (see the states below), there is no
                         sidebar pill, and clicking a row needs tmux's `mouse on` (the number keys always work).
     --inline            No panes: teammates run as subagents inside your session.
                         Works without cmux.
@@ -208,9 +209,10 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   `show` it (brings its pane to the front and moves focus there). A finished teammate has
   no pane; ask the lead to resume it.
 - Teammate *tool-permission* prompts appear in *their* pane — approve them there.
-  **Known limitation:** a prompt produces no notification, so the status pane cannot flag
-  it. The teammate shows `working` for about 10 minutes, then `stalled?`. If a teammate has
-  been quiet that long, ask the lead to `show` it (brings its pane to the front) before assuming a bug.
+  The status pane shows such a teammate as `permission` (from its event log). Without an
+  event log (the plugin did not load) a prompt produces no notification, so the teammate
+  shows `working` for about 10 minutes, then `stalled?`; if a teammate has been quiet that
+  long, ask the lead to `show` it (brings its pane to the front) before assuming a bug.
   (Haiku-tier teammates run in dontAsk mode and don't prompt; denied tools appear in
   their report.)
 - A teammate that needs your input or a decision forwards the question to the lead via
@@ -228,17 +230,21 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   plus a word, so colour is never the only cue; colour is off when output is not a terminal,
   `NO_COLOR` is set or `TERM=dumb`, and symbols fall back to ASCII in a non-UTF-8 locale.
   A `NEEDS YOU` block is pinned above the table only when a teammate is in one of the first
-  four states below; the STEP column is dropped below 60 columns.
+  five states below; the STEP column is dropped below 60 columns.
+    permission   Waiting on a tool-permission prompt (its event log's last event is a
+                 permission request): approve or deny it in its pane.
     waiting      AskUserQuestion notification detected — teammates must not use this;
                  `show` its pane and SendMessage it to send NEEDS INPUT to the lead instead.
                  Not detected for haiku/dontAsk tier.
     model gone   Its model is no longer available — respawn with a different model
     dead         Session exited — respawn it (a note says when its report is safe on disk)
-    stalled?     No status update for 10 minutes while mid-work. This is "no update in a
-                 while", not "stuck": a teammate in a long hook or subagent wait looks the
-                 same, so look at its pane before messaging it
+    stalled?     No status update for 10 minutes while mid-work. With an event log: no
+                 event for 10 minutes and no tool still running, so a long tool or hook is
+                 not flagged. This is "no update in a while", not "stuck": a subagent wait
+                 looks the same, so look at its pane before messaging it
     working      Doing its work (a note says "report on disk" once it has reported)
-    idle         Turn ended with no report yet; routine while it waits on a peer or the lead,
+    idle         Turn ended with no report yet (a Stop or idle prompt in the event log, or
+                 cmux's "Completed" notification); routine while it waits on a peer or the lead,
                  so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
@@ -246,8 +252,11 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
                  "T<n>:". Hand it that task. A claimed task counts as assigned, not unassigned.
     unknown      Not opened in cmux, or cmux could not be queried, so its state cannot be read
     finished     Reported, verified and closed by the lead
-  Live teammates' state comes from the cmux hooks the claude shim injects — no screen
-  scraping. A finished teammate has no surface, so its state comes from the report on disk
+  Live teammates' state comes from the team plugin's event log and the cmux hooks the claude
+  shim injects — no screen scraping. The log is `.team/runs/<run>/events/<role>.jsonl`;
+  `status --json` carries the measured state per teammate as
+  `event_state`, `event_age_s` (seconds since its last event) and `open_tool` (a tool
+  still running), all null without a log. A finished teammate has no surface, so its state comes from the report on disk
   and its registry row.
   The status pane opens automatically (unless `--no-monitor`) and repaints only when the
   frame changes, checking every 30 s (override with `TEAM_STATUS_INTERVAL`). It exits when

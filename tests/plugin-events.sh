@@ -184,4 +184,58 @@ allow	sudo ls
 CASES
 check "writer is executable" '[ -x "$H" ]'
 
+# ── Detection (lib/status.sh): state from the event log, replayed from the T27 live session ──
+LIB="$HERE/skills/team/scripts/lib/status.sh"
+ev() { bash -c '. "$1"; _st_events "$2" "$3"' _ "$LIB" "$1" "$2"; }
+F="$W/det.jsonl"; : > "$F"
+add() { printf '%s\n' "$1" >> "$F"; }
+check "no log: nothing printed (older inference stays)" '[ -z "$(ev "$W/none.jsonl" 100)" ]'
+add '{"t":100,"ev":"SessionStart"}'; add '{"t":101,"ev":"UserPromptSubmit"}'
+add '{"t":102,"ev":"PreToolUse","tool":"Bash"}'
+check "tool running: WORKING, open tool, age from last event" '[ "$(ev "$F" 162)" = "WORKING 60 Bash" ]'
+add '{"t":103,"ev":"PermissionRequest","tool":"Bash"}'; add '{"t":104,"ev":"SubagentStop"}'
+check "permission request survives a later SubagentStop" '[ "$(ev "$F" 110)" = "PERMISSION 6 Bash" ]'
+add '{"t":120,"ev":"PostToolUse","tool":"Bash"}'
+check "approved: WORKING, tool closed" '[ "$(ev "$F" 120)" = "WORKING 0 -" ]'
+add '{"t":130,"ev":"PreToolUse","tool":"Edit"}'; add '{"t":131,"ev":"Notification","ntype":"permission_prompt"}'
+add '{"t":140,"ev":"UserPromptSubmit"}'
+check "denied then new turn: tool not left open" '[ "$(ev "$F" 140)" = "WORKING 0 -" ]'
+add '{"t":150,"ev":"Stop"}'
+check "Stop: IDLE" '[ "$(ev "$F" 150)" = "IDLE 0 -" ]'
+add '{"t":160,"ev":"Notification","ntype":"idle_prompt"}'
+check "idle_prompt: IDLE" '[ "$(ev "$F" 170)" = "IDLE 10 -" ]'
+add '{"t":180,"ev":"SessionEnd"}'
+check "SessionEnd: ENDED" '[ "$(ev "$F" 180)" = "ENDED 0 -" ]'
+ln -s "$F" "$W/link.jsonl"
+check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
+st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
+check "_st_state: permission beats waiting" '[ "$(st "" tmux 1 "" 1 "" 1 1)" = PERMISSION ]'
+check "_st_state: no permission flag keeps WAITING" '[ "$(st "" tmux 1 "" 1 "" "" "")" = WAITING ]'
+
+# _st_row: a live tmux teammate (fake tmux, _alive stubbed) with an event log.
+RUN="$W/run"; mkdir -p "$RUN/status" "$RUN/events" "$W/bin"; printf '#!/bin/sh\n' > "$W/bin/tmux"; chmod +x "$W/bin/tmux"
+printf 'T1: investigating · 30%%\n' > "$RUN/status/q.txt"; touch -t 202001010000 "$RUN/status/q.txt"
+row() { PATH="$W/bin:$PATH" bash -c '. "$1"; _alive() { return 0; }; _reg() { echo "$2/team-$1.tabs"; }
+  _st_row "tmux %9 pane d1-q - - $3 - live" "$3" "" d1' _ "$LIB" "$W" "$RUN"; }
+now=$(date +%s)
+printf '{"t":%s,"ev":"PreToolUse","tool":"Bash"}\n' "$((now - 1200))" > "$RUN/events/q.jsonl"
+rec=$(row); f() { printf '%s' "$rec" | awk -F'\t' -v i="$1" '{print $i}'; }
+nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}'); empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
+check "row: 12 fields, none empty" '[ "$nf" = 12 ] && [ -z "$empty" ]'
+check "row: long tool open, so not stalled? despite 20 silent min" '[ "$(f 3)" = WORKING ] && [ "$(f 12)" = Bash ]'
+printf '{"t":%s,"ev":"PermissionRequest","tool":"Bash"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: PERMISSION under tmux, event fields carried" '[ "$(f 3)" = PERMISSION ] && [ "$(f 10)" = PERMISSION ] && [ "$(f 11)" -lt 60 ]'
+printf '{"t":%s,"ev":"Stop"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: IDLE under tmux from Stop" '[ "$(f 3)" = IDLE ]'
+printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$((now - 900))" > "$RUN/events/q.jsonl"
+rec=$(row)
+check "row: 15 silent min, no open tool: stalled?" '[ "$(f 3)" = STALLED ]'
+rm -f "$RUN/events/q.jsonl"; rec=$(row)
+check "row: no log: old inference, dashes in event fields" '[ "$(f 3)" = STALLED ] && [ "$(f 10)" = - ] && [ "$(f 12)" = - ]'
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' q d1-q PERMISSION investigating x 1 - 30 2 PERMISSION 7 Bash > "$W/recs"
+js=$(bash -c '. "$1"; _st_json "$2" "$3/none.tabs" d1 < "$3/recs"' _ "$LIB" "$RUN" "$W")
+check "status --json: event_state, event_age_s, open_tool" 'python3 -I -c "import json,sys; m=json.loads(sys.argv[1])[\"teammates\"][0]; sys.exit(not (m[\"event_state\"]==\"PERMISSION\" and m[\"event_age_s\"]==7 and m[\"open_tool\"]==\"Bash\" and list(m)[-3:]==[\"event_state\",\"event_age_s\",\"open_tool\"]))" "$js"'
+
 echo; [ "$fails" = 0 ] && echo "all plugin-events tests passed" || { echo "$fails failed"; exit 1; }
