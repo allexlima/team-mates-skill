@@ -116,10 +116,13 @@ fi
 #   DEAD        surface gone without the marker
 #   MODEL_GONE  model (or subagent model) no longer offered
 #   PERMISSION  the event log's last state-bearing event is a permission request (_st_events)
-#   WAITING     newest notification is an AskUserQuestion ("Claude question")
-#   STALLED     mid-work milestone, no status/report write for >=10 min
-#   IDLE        newest notification is "Completed in …" and no report on disk
-#               (routine while waiting on a peer; after 10 silent min it is STALLED)
+#   WAITING     an AskUserQuestion still open in the event log; without a log, the newest
+#               notification is an AskUserQuestion ("Claude question")
+#   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
+#               measured WORKING with no event and no open tool for >=10 min
+#   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
+#               or without a log the newest notification is "Completed in …" (routine while
+#               waiting on a peer; after 10 silent min it is STALLED)
 #   WORKING     everything else (including "report on disk" while still alive)
 # ---------------------------------------------------------------------------
 _st_state() {
@@ -157,12 +160,15 @@ _st_state() {
 # are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
 # user too: it shows PERMISSION until the next subagent tool result or denial (subagents are
 # not told apart, so any subagent's clears it), or until any main-thread event.
-# Reads only the last 200 lines; the writer's fixed format lets awk parse it.
+# Reads only the last 2000 lines; the writer's fixed format lets awk parse it.
+# shortcut: about 1000 subagent tool calls after a main PermissionRequest still push it out of
+# view (the row falls back to the older inference); scan backwards for the last main-thread
+# line if that shows up in practice.
 # ---------------------------------------------------------------------------
 _st_events() {
   local f=$1 now=$2
   [ -s "$f" ] && [ ! -L "$f" ] || return 0
-  tail -n 200 "$f" 2>/dev/null | awk -v now="$now" '
+  tail -n 2000 "$f" 2>/dev/null | awk -v now="$now" '
     function val(k,   s) { if (!match($0, "\"" k "\": *\"?[A-Za-z0-9_.:-]+")) return ""
       s = substr($0, RSTART, RLENGTH); sub(/^"[^"]*": *"?/, "", s); return s }
     { t = val("t") + 0; ev = val("ev"); if (ev == "" || t == 0) next
@@ -397,19 +403,20 @@ _st_row() {
   # Measured state from the plugin's event log (live rows only: a finished teammate's log is
   # history). It wins over the silence and notification inference above, under tmux too:
   # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
-  # a stall), idle comes from Stop/idle_prompt, and a permission request is its own state.
+  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
+  # waiting only from an open AskUserQuestion, and a permission request is its own state.
   local evs=- eva=- evt=- perm= _ev
   if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
     read -r evs eva evt <<<"$_ev"
-    idle= stalled=
+    idle= stalled= waiting=
     case $evs in
       PERMISSION) perm=1 ;;
-      IDLE) [ "$ms" = reported ] || idle=1 ;;
+      IDLE|ENDED) [ "$ms" = reported ] || idle=1 ;;
     esac
     # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
     [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
-      [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
     esac
   fi
 
@@ -422,7 +429,7 @@ _st_row() {
   elif [ "$state" = DEAD ] && [ -n "$rpt" ] && [ -f "$rpt" ]; then note="report safe; resume unavailable"
   fi
 
-  # Record contract: 9 TAB-separated fields, NONE of them empty. Tab is IFS
+  # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
