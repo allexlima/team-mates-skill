@@ -41,7 +41,8 @@ from datetime import datetime
 PAL = {"alert": "#FF453A", "active": "#AF52DE", "done": "#30D158", "dim": "#8E8E93",
        "accent": "#4C8DFF", "warn": "#FF9F0A", "track": "#2A2C3A", "text": "#E6E6EB"}
 #           token          glyph  word          palette role
-STATES = {"WAITING":     ("⏸", "waiting",     "alert"),
+STATES = {"PERMISSION":  ("⊘", "permission",  "alert"),
+          "WAITING":     ("⏸", "waiting",     "alert"),
           "MODEL_GONE":  ("⚠", "model gone",  "alert"),
           "DEAD":        ("✗", "dead",        "alert"),
           "STALLED":     ("⧗", "stalled?",    "alert"),
@@ -50,7 +51,8 @@ STATES = {"WAITING":     ("⏸", "waiting",     "alert"),
           "UNKNOWN":     ("?", "unknown",     "dim"),
           "FINISHED":    ("✓", "finished",    "done")}
 ORDER = list(STATES)
-HINT = {"WAITING": "used AskUserQuestion: answer in its pane, remind it to send NEEDS INPUT",
+HINT = {"PERMISSION": "waiting on a tool-permission prompt: approve or deny it in its pane",
+        "WAITING": "used AskUserQuestion: answer in its pane, remind it to send NEEDS INPUT",
         "MODEL_GONE": "its model is no longer offered: respawn with another",
         "DEAD": "session exited: respawn it",
         "STALLED": "no status update for 10 min: look at its pane"}

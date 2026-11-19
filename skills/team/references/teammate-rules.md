@@ -87,6 +87,9 @@ the slowest teammate sets the pace for the whole team.
 - **Leave your worktree clean before reporting.** On a build run the lead's `finish` refuses while
   your worktree has uncommitted changes, and untracked files count. Commit your work and commit
   or delete scratch files first, or your own pane cannot be closed.
+- **Keep scratch files in `$TEAM_SCRATCH`.** Edit and Write are blocked outside your worktree,
+  your run dir and that private scratch dir, and that includes `/tmp` and `~/.claude`. If a write
+  is blocked, move it into one of those places; do not route it through Bash instead.
 - **Notify when reporting or sending NEEDS INPUT.** Order for a report: write the report file,
   tick the task's line in `tasks.md`, run `cmux notify`, and make the SendMessage to the lead your
   **last** act — the lead may finish (close) your pane on receiving it, so anything after it may

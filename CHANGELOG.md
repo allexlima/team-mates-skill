@@ -28,17 +28,20 @@ All notable changes to this project are recorded here. The format follows
   narrows the hole but does not make `Bash` safe. (#7, #5)
 - README GIFs of the monitor and `--help`, recorded from the `.tape` scripts in
   `assets/readme/tapes/`. (#16)
-- PLACEHOLDER (hook-spawn): `team.sh spawn` loads the plugin for each teammate
-  with a run dir and sets its events file, scratch dir and fence roots;
-  `team.sh clean` removes the scratch dirs and system-prompt files.
-- PLACEHOLDER (T28c): the monitor shows a PERMISSION state, read from the event
-  log, for a teammate blocked on a tool-approval prompt.
+- `team.sh spawn` loads that plugin (`--plugin-dir`) for every teammate with a
+  run dir and sets its events file, scratch dir and fence roots; it warns on
+  stderr when there is no run dir. `team.sh clean` also removes finished
+  teammates' scratch dirs and system prompts. (#18)
+- `status` reads live teammates' state from the event log, under tmux too: a
+  `permission` state for a teammate blocked on a tool-permission prompt, and
+  idle and activity age taken from the events. `status --json` adds
+  `event_state`, `event_age_s` and `open_tool`. (#20)
 - PLACEHOLDER (T29): step-based progress (`T3: 2/5 · step`) in the status line
   and the monitor.
 
 ### Changed
 
-- PLACEHOLDER (T37): README rewritten from scratch. (#?)
+- The README is rewritten from scratch around the pane-grid theme. (#19)
 - The monitor reads the context window of 1M-token models correctly, and
   `status --json --sync` polls about twice as fast with 7 live teammates. (#14)
 - The TUI's token total (`Σ … out`) counts output tokens, not cache re-reads,
@@ -50,6 +53,8 @@ All notable changes to this project are recorded here. The format follows
   `printf | grep -q` pipeline took SIGPIPE under `pipefail`. Four other such
   pipelines in `team.sh` and `lib/status.sh` now use here-strings too. (#17)
 - `tests/status-render.sh` G7 passes under the C locale. (#15)
+- `team.sh clean` no longer removes another team's build-run worktrees when one
+  team's name is a prefix of another's. (#18)
 
 ### Known limits
 
