@@ -58,6 +58,8 @@ When the task edits code in a git repo, each teammate also gets its own worktree
 
 A status pane opens while the team runs. It shows overall task progress, a team ETA, and a **NEEDS YOU** block that pins any teammate needing attention, such as a dead session or one idle while ready work has no owner. `/team --help` lists every state. Teammates report their own percentages, so treat the progress and ETA as rough estimates.
 
+When [Textual](https://textual.textualize.io) or [uv](https://docs.astral.sh/uv/) is installed, the pane is a full-screen TUI: a card per teammate with its own ETA, the tool call in flight and its context use, a backlog forecast that follows each task's dependencies, an event log, and a detail view with each teammate's report. Try it without a team: `python3 ~/.claude/skills/team/scripts/monitor_tui.py --demo` (with uv alone: `uv run --script ~/.claude/skills/team/scripts/monitor_tui.py --demo`).
+
 ## Project memory
 
 The skill keeps its state in a git-ignored `.team/` folder at the project root:
