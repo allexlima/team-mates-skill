@@ -6,42 +6,56 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.2.0] - DRAFT, date set at release
+## [0.2.0] - YYYY-MM-DD
 
-Draft entries; every line must match what is merged on `dev` when this is released.
+<!-- Release draft. Before the release PR: set the date, fill the placeholders below
+     from what merged, and drop any line whose PR did not land. -->
 
 ### Added
 
-- A Textual TUI monitor (`monitor_tui.py`, opened by `team.sh monitor`) with one
-  card per teammate, the ETA marked as a forecast, a details screen and a
-  `--demo` mode. `team.sh status --json` feeds it. The suite `tests/monitor-tui.sh`
-  is in the gate set; Textual is optional and the text monitor remains.
-- `team.sh prompt`, which renders a teammate prompt from
-  `references/prompt-template.md`, so `SKILL.md` keeps only the procedure.
-- A session-only event plugin (`skills/team/plugin`, `team-mates-events`): hooks
-  append one line per event (state, tool name, never tool input or message
-  text) to `<run>/events/<role>.jsonl`.
-- A PreToolUse fence in that plugin: it denies `Edit` and `Write` outside the
-  teammate's worktree, run directory and scratch dir, and denies git commands
-  that skip hooks. It narrows the hole but does not make `Bash` safe; the known
-  gaps are documented in `HELP.md`.
-- `team.sh spawn` wires the plugin, the events file, a scratch dir and the fence
-  roots into each teammate with a run dir.
-- The monitor shows a PERMISSION state, read from the event log, for a teammate
-  blocked on a tool-approval prompt.
+- A Textual TUI monitor (`scripts/monitor_tui.py`), fed by a new
+  `team.sh status --json`. It shows one card per teammate with its
+  self-reported progress, an ETA marked as a forecast, a details screen and a
+  `--demo` mode. Textual is optional; without it the text monitor runs as
+  before. `tests/monitor-tui.sh` is in the gate set. (#14)
+- `team.sh prompt`, which renders each teammate prompt from
+  `references/prompt-template.md` plus a short per-run brief, so `SKILL.md`
+  keeps only the procedure. (#13)
+- `plugin/`, a session-only hook plugin. Its `event.sh` appends one line per
+  Claude Code event (time, event, tool name, notification type; never tool
+  input) to `$TEAM_EVENTS_FILE`. Its PreToolUse `fence.py` denies edits
+  outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. The fence
+  narrows the hole but does not make `Bash` safe. (#7, #5)
 - README GIFs of the monitor and `--help`, recorded from the `.tape` scripts in
-  `assets/readme/tapes/`.
+  `assets/readme/tapes/`. (#16)
+- PLACEHOLDER (hook-spawn): `team.sh spawn` loads the plugin for each teammate
+  with a run dir and sets its events file, scratch dir and fence roots;
+  `team.sh clean` removes the scratch dirs and system-prompt files.
+- PLACEHOLDER (T28c): the monitor shows a PERMISSION state, read from the event
+  log, for a teammate blocked on a tool-approval prompt.
+- PLACEHOLDER (T29): step-based progress (`T3: 2/5 · step`) in the status line
+  and the monitor.
 
 ### Changed
 
-- The monitor reads context windows correctly for 1M-token models, and
-  `status --json --sync` polls about twice as fast with 7 live teammates.
-- `team.sh clean` removes a team's scratch dirs and system-prompt files.
+- The monitor reads the context window of 1M-token models correctly, and
+  `status --json --sync` polls about twice as fast with 7 live teammates. (#14)
+
+### Fixed
+
+- `doccheck` no longer reports a documented subcommand as missing: a
+  `printf | grep -q` pipeline took SIGPIPE under `pipefail`. Four other such
+  pipelines in `team.sh` and `lib/status.sh` now use here-strings too. (#17)
+- `tests/status-render.sh` G7 passes under the C locale. (#15)
 
 ### Known limits
 
+- `tests/status-render.sh` AQ1 hangs now and then on a busy machine; the cause
+  is not found. The test prints the pty tail and a `ps` snapshot when it hangs.
+  (#15)
 - Mouse clicks in the TUI under cmux are unverified.
-- The TUI's token total counts cache re-reads, so it overstates distinct context.
+- The TUI's token total counts cache re-reads, so it overstates distinct
+  context.
 
 ## [0.1.1] - 2026-11-18
 

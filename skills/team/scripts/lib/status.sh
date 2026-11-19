@@ -139,18 +139,31 @@ _st_state() {
 # Detection only (decision 7): gathers the facts and asks _st_state for the token;
 # _st_frame does all layout. Reads module globals: _ST_UUID_MAP, _ST_NOTIF_DATA
 # ---------------------------------------------------------------------------
+# _st_model_gone <m>: _model_gone's answer from the picker read once per refresh into
+# _ST_MODELS (one python start per refresh, not two per teammate).
+# _st_mtime <file>: mtime in epoch seconds. GNU stat vs BSD stat is probed once per refresh
+# (_ST_GNUSTAT, set in _st_records), not by a failing fork per file on macOS.
+_ST_GNUSTAT=
+_st_mtime() {
+  if [ -z "$_ST_GNUSTAT" ]; then stat -c %Y / >/dev/null 2>&1 && _ST_GNUSTAT=1 || _ST_GNUSTAT=0; fi
+  if [ "$_ST_GNUSTAT" = 1 ]; then stat -c %Y "$1" 2>/dev/null; else stat -f %m "$1" 2>/dev/null; fi
+}
+
+_ST_MODELS=
+_st_model_gone() {
+  case ${1:-} in ''|-|opus|sonnet|haiku) return 1 ;; esac
+  local _a _id
+  while IFS=$'\t' read -r _a _id _; do [ "$_id" = "$1" ] && return 1; done <<<"$_ST_MODELS"
+  return 0
+}
+
 _st_row() {
   local row="$1" run="$2" leadpane="$3" team="$4"
 
   local backend ref lay title mdl submdl rundir marker
-  backend=$(awk '{print $1}' <<<"$row")
-  ref=$(awk '{print $2}' <<<"$row")
-  lay=$(awk '{print $3}' <<<"$row")
-  title=$(awk '{print $4}' <<<"$row")
-  mdl=$(awk '{print $5}' <<<"$row")
-  submdl=$(awk 'NF>=6{print $6}' <<<"$row")
-  rundir=$(awk 'NF>=7{print $7}' <<<"$row")
-  marker=$(awk 'NF>=9{print $9}' <<<"$row")
+  # One read, not eight awk forks: this runs per teammate on every refresh.
+  local _c8 _rest
+  read -r backend ref lay title mdl submdl rundir _c8 marker _rest <<<"$row" || true
 
   # Strip exact team prefix to handle team slugs with hyphens
   local role="${title#"$team"-}"
@@ -209,7 +222,7 @@ _st_row() {
   local elapsed=-1
   local spf; spf="$(dirname "$(_reg "$team")")/team-$team-$role.sysprompt.md"
   if [ -f "$spf" ]; then
-    local st; st=$(stat -c %Y "$spf" 2>/dev/null || stat -f %m "$spf" 2>/dev/null) || true
+    local st; st=$(_st_mtime "$spf") || true
     if [ -n "${st:-}" ]; then
       local n2; n2=$(date +%s); elapsed=$(( (n2 - st) / 60 ))
     fi
@@ -220,7 +233,7 @@ _st_row() {
   local f t
   for f in "$rpt" "$stf"; do
     [ -n "$f" ] && [ -f "$f" ] || continue
-    t=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+    t=$(_st_mtime "$f") || continue
     [ "$t" -gt "$newest" ] && newest=$t
   done
   if [ "$newest" -gt 0 ]; then
@@ -242,7 +255,7 @@ _st_row() {
   local m
   for m in "$mdl" "$submdl"; do
     [ -z "$m" ] || [ "$m" = "-" ] && continue
-    _model_gone "$m" 2>/dev/null && { gone=1; break; }
+    _st_model_gone "$m" && { gone=1; break; }
   done
 
   # tmux rows: liveness only. tmux has no hook feed, so no waiting/idle; stalled? still
@@ -254,48 +267,60 @@ _st_row() {
   if [ -z "$fin" ] && [ "$backend" = cmux ] && command -v cmux >/dev/null; then
     # DEAD only on _alive's definite answer (not_found / null pane_ref). _alive keeps
     # the row on any cmux error, so a _pane_of failure after it is an error too: UNKNOWN.
-    alive=0
-    if _alive cmux "$ref" 2>/dev/null; then
-      alive=
-      local pp; pp=$(_pane_of "$ref" 2>/dev/null || echo gone)
-      if [ "$pp" != gone ]; then
-        alive=1
-        # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
-        if [ -n "$leadpane" ] && [ "$pp" = "$leadpane" ]; then
-          parked=1
-        fi
+    # One `cmux identify` answers both questions (the surface exists; which pane holds it).
+    # DEAD on not_found or a null pane_ref; any other error leaves the state UNKNOWN.
+    local idout idrc=0 pp=
+    idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
+    if [ "$idrc" != 0 ]; then
+      case $idout in *not_found*) alive=0 ;; esac
+    else
+      # caller object only, no python start per row. An object without a pane_ref means the
+      # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
+      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
+        pp=gone
+        [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+      fi
+      case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
+    fi
+    if [ "$alive" = 1 ]; then
+      # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
+      if [ -n "$leadpane" ] && [ "$pp" = "$leadpane" ]; then
+        parked=1
+      fi
 
-        # WAITING / IDLE: derive from newest cmux notification for this surface.
-        # Skip WAITING for haiku/dontAsk tier (no human approval needed).
-        # Probed by rev4-tests (CLI 2.1.294):
-        #   AskUserQuestion  → title="Claude question", subtitle=""
-        #   Completion/Stop  → title="Claude Code",     subtitle="Completed in <session>"
-        #   PermissionRequest → NOT in list-notifications (uses cmux hooks feed).
-        #     Permission prompts cannot be detected via notifications; a teammate
-        #     blocked on one surfaces only as STALLED after 10 min of silence.
-        local skip_waiting=
-        case "${mdl:-}" in *haiku*|*glm*|*kimi*) skip_waiting=1 ;; esac
-        if [ -z "$skip_waiting" ] && declare -f _model_tier >/dev/null 2>&1; then
-          local tier; tier=$(_model_tier "${mdl:-}" 2>/dev/null || true)
-          [ "$tier" = haiku ] && skip_waiting=1
-        fi
-        if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
-          local uuid
-          uuid=$(awk -F'=' -v r="$ref" '$1==r {print $2; exit}' <<<"$_ST_UUID_MAP" 2>/dev/null || true)
-          if [ -n "$uuid" ]; then
-            local notif_line notif_title notif_subtitle
-            notif_line=$(awk -F'|' -v u="$uuid" '$1==u {print; exit}' \
-                         <<<"$_ST_NOTIF_DATA" 2>/dev/null || true)
-            if [ -n "$notif_line" ]; then
-              notif_title=$(awk -F'|' '{print $2}' <<<"$notif_line")
-              notif_subtitle=$(awk -F'|' '{print $3}' <<<"$notif_line")
-              if [ -z "$skip_waiting" ]; then
-                printf '%s\n' "$notif_title" | grep -qi 'claude question' && waiting=1
-              fi
-              # Session completed its last turn but report not yet on disk
-              if [ "$ms" != reported ]; then
-                printf '%s\n' "$notif_subtitle" | grep -qi '^completed in ' && idle=1
-              fi
+      # WAITING / IDLE: derive from newest cmux notification for this surface.
+      # Skip WAITING for haiku/dontAsk tier (no human approval needed).
+      # Probed by rev4-tests (CLI 2.1.294):
+      #   AskUserQuestion  → title="Claude question", subtitle=""
+      #   Completion/Stop  → title="Claude Code",     subtitle="Completed in <session>"
+      #   PermissionRequest → NOT in list-notifications (uses cmux hooks feed).
+      #     Permission prompts cannot be detected via notifications; a teammate
+      #     blocked on one surfaces only as STALLED after 10 min of silence.
+      local skip_waiting=
+      case "${mdl:-}" in *haiku*|*glm*|*kimi*) skip_waiting=1 ;; esac
+      if [ -z "$skip_waiting" ]; then
+        local _a _id tier=
+        while IFS=$'\t' read -r _a _id tier; do [ "$_id" = "${mdl:-}" ] && break; tier=; done <<<"$_ST_MODELS"
+        [ "$tier" = haiku ] && skip_waiting=1
+      fi
+      if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
+        # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
+        local uuid= um nl
+        um=$'\n'"$_ST_UUID_MAP"
+        case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
+        if [ -n "$uuid" ]; then
+          local notif_line notif_title notif_subtitle
+          nl=$'\n'"$_ST_NOTIF_DATA"
+          case $nl in *$'\n'"$uuid|"*) notif_line=${nl#*$'\n'"$uuid|"}; notif_line=${notif_line%%$'\n'*} ;; *) notif_line= ;; esac
+          if [ -n "$notif_line" ]; then
+            notif_title=${notif_line%%|*}
+            notif_subtitle=${notif_line#*|}
+            if [ -z "$skip_waiting" ]; then
+              grep -qi 'claude question' <<<"$notif_title" && waiting=1
+            fi
+            # Session completed its last turn but report not yet on disk
+            if [ "$ms" != reported ]; then
+              grep -qi '^completed in ' <<<"$notif_subtitle" && idle=1
             fi
           fi
         fi
@@ -395,6 +420,9 @@ except Exception:
 " 2>/dev/null || true)
   fi
 
+  _ST_MODELS=$(_team_models 2>/dev/null || true)
+  _ST_GNUSTAT=; _st_mtime / >/dev/null   # probe stat flavour here, outside the per-row subshells
+
   # Deduplicate by title (last row wins, first-appearance order, dash excluded)
   local deduped
   deduped=$(awk '
@@ -425,11 +453,15 @@ except Exception:
 # ready_owners = comma-joined live teammates that hold a ready task: their own line or a claimed one.
 # With a team (2nd arg) only tasks owned by <team>-* or `any` count: a tasks.md can carry
 # another team's lines.
+# With `json <registry>` after <run-dir> <team> it prints one JSON document instead (the
+# `status --json` contract the TUI monitor reads): the same summary, plus every teammate
+# joined with its registry row and every parsed task. One parser for tasks.md, two outputs.
 # ---------------------------------------------------------------------------
 read -r -d '' _ST_SUMMARY_PY <<'PY' || true
-import glob, os, re, sys
+import glob, json, os, re, sys, time
 run = sys.argv[1]
 team = sys.argv[2] if len(sys.argv) > 2 else ''
+mode = sys.argv[3] if len(sys.argv) > 3 else 'summary'
 recs = {}
 for line in sys.stdin:
     f = line.rstrip('\n').split('\t')
@@ -438,8 +470,9 @@ for line in sys.stdin:
     def num(x):
         try: return int(x)
         except ValueError: return -1
-    recs[f[1]] = dict(state=f[2], ms=f[3], step=f[4], pct=num(f[7]), elapsed=num(f[8]))
-tasks = []   # [id, owner, done, needs]
+    recs[f[1]] = dict(role=f[0], state=f[2], ms=f[3], step=f[4], age=num(f[5]),
+                      note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]))
+tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
 except OSError:
@@ -449,11 +482,11 @@ for n, l in enumerate(lines, 1):
     if m:
         nd = re.search(r'needs:\s*(.*)$', m.group(4) or '')
         tasks.append([m.group(2), m.group(3), m.group(1) != ' ',
-                      re.findall(r'T\d+', nd.group(1)) if nd else []])
+                      re.findall(r'T\d+', nd.group(1)) if nd else [], m.group(4) or ''])
         continue
     m = re.match(r'\s*- \[([ xX])\] (\S+):', l)
     if m:
-        tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', []])
+        tasks.append(['L%d' % n, m.group(2), m.group(1) != ' ', [], ''])
 if team:
     # A sibling run dir <date>-<slug> with slug starting "<team>-" is another team whose
     # owners (<slug>-role) would otherwise pass the prefix test; live records still count.
@@ -492,9 +525,96 @@ for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
         prs |= set(re.findall(r'https://[^\s)>\]]+/pull/\d+', open(rp, encoding='utf-8', errors='replace').read()))
     except OSError:
         pass
-print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
+if mode != 'json':
+    print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
+    sys.exit(0)
+
+# ---- json: the status --json contract (version 1). Keys are only ever added. ----
+reg = sys.argv[4]
+rows = {}   # title -> registry fields; last row wins, the dash monitor is not a teammate
+try:
+    for l in open(reg, encoding='utf-8', errors='replace'):
+        c = l.rstrip('\n').split(' ', 10)
+        if len(c) < 4 or c[2] == 'dash':
+            continue
+        c += ['-'] * (11 - len(c))
+        rows[c[3]] = dict(backend=c[0], ref=c[1], layout=c[2], model=c[4], submodel=c[5],
+                          session_id=c[9], cwd=c[10])
+except OSError:
+    pass
+def dash(v):
+    return None if v in ('', '-') else v
+def mtime(p):
+    try: return int(os.stat(p).st_mtime)
+    except OSError: return None
+def branch(cwd):
+    # Cheap: read HEAD through the worktree's .git file; no git process per tick.
+    try:
+        g = os.path.join(cwd, '.git')
+        if os.path.isfile(g):
+            g = open(g, encoding='utf-8').read().split('gitdir:', 1)[1].strip()
+            g = g if os.path.isabs(g) else os.path.join(cwd, g)
+        head = open(os.path.join(g, 'HEAD'), encoding='utf-8').read().strip()
+        return head[len('ref: refs/heads/'):] if head.startswith('ref: refs/heads/') else None
+    except (OSError, IndexError):
+        return None
+def task_of(title, r):
+    mine = [t for t in tasks if not t[2] and t[1] in (title, 'any')]
+    m = re.match(r'\s*(T\d+):', r['step'])
+    pick = [t for t in mine if m and t[0] == m.group(1)] or [t for t in mine if t[1] == title]
+    return pick[0][0] if pick else (m.group(1) if m else None)
+mates = []
+for title, r in recs.items():
+    g = rows.get(title, {})
+    cwd = dash(g.get('cwd', '-'))
+    rp = os.path.join(run, 'reports', r['role'] + '.md') if run != '-' else ''
+    sp = os.path.join(run, 'status', r['role'] + '.txt') if run != '-' else ''
+    mates.append(dict(
+        role=r['role'], title=title, state=r['state'], milestone=r['ms'],
+        step=None if r['step'] == '-' else r['step'], pct=None if r['pct'] < 0 else r['pct'],
+        age_min=None if r['age'] < 0 else r['age'],
+        elapsed_min=None if r['elapsed'] < 0 else r['elapsed'],
+        note=r['note'] or None, task=task_of(title, r),
+        backend=dash(g.get('backend', '-')), ref=dash(g.get('ref', '-')),
+        layout=dash(g.get('layout', '-')), model=dash(g.get('model', '-')),
+        submodel=dash(g.get('submodel', '-')), session_id=dash(g.get('session_id', '-')),
+        cwd=cwd, branch=branch(cwd) if cwd and '/.team/worktrees/' in cwd else None,
+        report=rp if rp and os.path.isfile(rp) else None, report_mtime=mtime(rp) if rp else None,
+        status_mtime=mtime(sp) if sp else None))
+def split_rest(rest):
+    parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
+    out = dict(scope=parts[0].strip() or None, owns=None)
+    for k, v in zip(parts[1::2], parts[2::2]):
+        if k == 'owns':
+            out['owns'] = v.strip() or None
+    return out
+tlist = []
+for t in tasks:
+    sr = split_rest(t[4])
+    tlist.append(dict(id=t[0], owner=t[1], done=t[2], needs=t[3],
+                      ready=(not t[2]) and all(d in done_ids for d in t[3]), **sr))
+# The bar the classic frame draws (_ST_FRAME_PY keeps the same rule): overall task progress when
+# tasks.md has task lines; else the average self-reported % (reported/finished = 100), else
+# reported/total. bar_est marks a self-reported estimate (the `~`).
+eff = [100 if (r['ms'] == 'reported' or r['state'] == 'FINISHED') else r['pct']
+       for r in recs.values() if (r['ms'] == 'reported' or r['state'] == 'FINISHED' or r['pct'] >= 0)]
+use_avg = any(r['pct'] >= 0 for r in recs.values()) and bool(eff)
+if total > 0 and pct >= 0:
+    bar_pct, bar_est = pct, bool(est)
+else:
+    nrep = sum(1 for r in recs.values() if r['ms'] == 'reported' or r['state'] == 'FINISHED')
+    bar_pct = (sum(eff) // len(eff)) if use_avg else ((100 * nrep // len(recs)) if recs else 0)
+    bar_est = use_avg
+print(json.dumps(dict(
+    version=1, team=team, run=None if run == '-' else run, now=int(time.time()),
+    summary=dict(done=done, total=total, pct=pct, est=bool(est), elapsed_min=elapsed,
+                 eta_min=eta, pending=len(pending), unassigned=unassigned, prs=len(prs),
+                 ready_owners=ready_owners, bar_pct=bar_pct, bar_est=bar_est),
+    prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
+# _st_json <run-dir> <registry> <team>: teammate records on stdin -> the status --json document
+_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" json "$2"; }
 
 # ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
@@ -821,17 +941,24 @@ _st_frame() {
   python3 -I -c "$_ST_FRAME_PY" "$@"
 }
 
-# _st_collect <team>: resolve run dir + lead pane, print the team's records.
-# Exit 3 when the team has no registry.
+# _st_run_of <team>: the run dir the team's records read. Registry col 7 (the run dir spawn
+# recorded; last row = newest when a slug is reused) wins over the newest .team/runs/*-<team>.
+_st_run_of() {
+  local team=$1 reg run rd
+  reg=$(_reg "$team")
+  run=$(ls -dt "$(_root)/.team/runs/"*"-$team" 2>/dev/null | head -1 || true)
+  rd=$(awk 'NF>=7 && $7!="-" {r=$7} END{print r}' "$reg" 2>/dev/null || true)
+  [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
+  printf '%s\n' "$run"
+}
+
+# _st_collect <team> [--records]: resolve run dir + lead pane, print the team's records and
+# the @summary record (--records: the teammate records only). Exit 3 when the team has no registry.
 _st_collect() {
-  local team=$1
+  local team=$1 only=${2:-}
   local reg; reg=$(_reg "$team")
   [ -f "$reg" ] || return 3
-  local root; root=$(_root)
-
-  # Fallback run dir (for old registry rows without col 7)
-  local run
-  run=$(ls -dt "$root/.team/runs/"*"-$team" 2>/dev/null | head -1 || true)
+  local run; run=$(_st_run_of "$team")
 
   # Lead's pane_ref, for the "in the lead's pane" note. Inside the monitor pane
   # _lead_pane would resolve to the monitor itself, so sub_monitor bakes
@@ -845,30 +972,70 @@ _st_collect() {
       leadpane="${lp%% *}"
     fi
   fi
-  # Registry col 7 (the run dir spawn recorded) wins over the newest-run fallback.
-  # Last row: spawn appends, so it is the newest run when a team slug is reused.
-  local rd; rd=$(awk 'NF>=7 && $7!="-" {r=$7} END{print r}' "$reg" 2>/dev/null || true)
-  [ -n "$rd" ] && [ -d "$rd" ] && run=$rd
   local recs; recs=$(_st_records "$reg" "$run" "$leadpane" "$team")
   [ -z "$recs" ] || printf '%s\n' "$recs"
+  [ "$only" = --records ] && return 0
   printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null || true
 }
 
+# _st_tui_pick: sets _ST_TUI to the command that runs the full-screen TUI monitor
+# (scripts/monitor_tui.py, Textual) and returns 0; returns 1 for the classic monitor.
+# TEAM_MONITOR_UI=classic forces the classic one. Textual already importable by python3
+# wins; else `uv run --script` resolves the script's inline dependency on first use.
+_ST_TUI=()
+_st_tui_pick() {
+  _ST_TUI=()
+  local py="$here/monitor_tui.py"
+  [ "${TEAM_MONITOR_UI:-auto}" != classic ] && [ -f "$py" ] || return 1
+  if python3 -c 'import sys, textual; sys.exit(not 1 <= int(textual.__version__.split(".")[0]) <= 8)' 2>/dev/null; then
+    _ST_TUI=(python3 "$py")
+  elif command -v uv >/dev/null 2>&1; then
+    _ST_TUI=(uv run --quiet --script "$py")
+  else
+    return 1
+  fi
+}
+
+# _st_close_self: close the pane this monitor runs in (tmux pane or cmux surface).
+_st_close_self() {
+  if [ "$(_mux)" = tmux ] && [ -n "${TMUX_PANE:-}" ]; then
+    _tmux kill-pane -t "$TMUX_PANE" >/dev/null 2>&1 || true
+  elif [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
+    cmux close-surface --force --surface "$CMUX_SURFACE_ID" >/dev/null 2>&1 || true
+  fi
+}
+
 # ---------------------------------------------------------------------------
-# sub_status [--watch] <team>
+# sub_status [--watch | --json [--sync]] <team>
 # One frame: summary + progress bar, a NEEDS YOU block only when something needs
 # attention, then the table. --watch re-reads the width every tick, repaints only
 # when the frame changed, syncs the sidebar from the same records, and exits 0
-# once `close` removes the registry.
+# once `close` removes the registry. In a terminal, --watch runs the TUI monitor
+# (monitor_tui.py) when Textual or uv is available, and falls back to this loop.
+# --json prints the same state as one JSON document (the TUI's only data source);
+# --sync also updates the sidebar from it, as one --watch tick does.
 # Exit: 0 ok, 3 no registry
 # ---------------------------------------------------------------------------
 
 sub_status() {
-  local watch=
-  [ "${1:-}" = --watch ] && { watch=1; shift; }
+  local watch= json= sync=
+  while :; do case ${1:-} in
+    --watch) watch=1; shift ;; --json) json=1; shift ;; --sync) sync=1; shift ;;
+    *) break ;;
+  esac; done
   local team=${1:?team}
   local reg; reg=$(_reg "$team")
   [ -f "$reg" ] || { printf 'no teammates recorded for %s\n' "$team" >&2; return 3; }
+
+  if [ -n "$json" ]; then
+    local run recs; run=$(_st_run_of "$team")
+    recs=$(_st_collect "$team" --records) || return 3
+    if [ -n "$sync" ]; then
+      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null)" || true
+    fi
+    printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team"
+    return 0
+  fi
 
   local color=0 ascii=0
   _st_color_on && color=1
@@ -887,6 +1054,20 @@ sub_status() {
   # immediately, which would spin the loop instead of waiting.
   local keys=0
   [ -t 0 ] && keys=1
+
+  # The TUI monitor, when this is a real terminal and Textual/uv can run it. Its exit
+  # code says why it stopped: 0 the user quit, 4 every teammate finished (close this pane,
+  # as the classic loop does), 5 the team was closed. Anything else (no network for uv's
+  # first install, a crash) falls through to the classic loop below.
+  if [ "$keys" = 1 ] && [ -t 1 ] && _st_tui_pick; then
+    local trc=0
+    TEAM_SCRIPT="$here/team.sh" "${_ST_TUI[@]}" --team "$team" --team-sh "$here/team.sh" || trc=$?
+    case $trc in
+      0|5) return 0 ;;
+      4) _st_close_self; return 0 ;;
+      *) printf 'monitor: the TUI stopped (exit %s); using the classic monitor\n' "$trc" >&2; sleep 2 ;;
+    esac
+  fi
   local km= mouse=0
   if [ "$keys" = 1 ]; then
     km=$(mktemp "${TMPDIR:-/tmp}/team-keymap.XXXXXX") || km=
@@ -930,18 +1111,14 @@ sub_status() {
     # all finished? (non-empty record set, every row FINISHED)
     local allfin=
     if [ -n "$recs" ] && ! printf '%s\n' "$recs" | awk -F'\t' 'NF>=3 && $1!~/^@/ && $3!="FINISHED"{found=1} END{exit !found}'; then
-      printf '%s\n' "$recs" | grep -qv '^@' && allfin=1
+      grep -qv '^@' <<<"$recs" && allfin=1
     fi
     if [ -n "$allfin" ] && [ -z "$was_all_fin" ] && [ "$autoclose" = 1 ] \
        && [ -n "${_ST_SAW_UNFINISHED:-}" ]; then
       printf '\n  all teammates finished — closing this pane.\n'
       printf '  (reopen with: team.sh monitor %s · keep it with TEAM_MONITOR_AUTOCLOSE=0)\n' "$team"
       sleep "${TEAM_MONITOR_CLOSE_GRACE:-4}"
-      if [ "$(_mux)" = tmux ] && [ -n "${TMUX_PANE:-}" ]; then
-        _tmux kill-pane -t "$TMUX_PANE" >/dev/null 2>&1 || true
-      elif [ -n "${CMUX_SURFACE_ID:-}" ] && command -v cmux >/dev/null 2>&1; then
-        cmux close-surface --force --surface "$CMUX_SURFACE_ID" >/dev/null 2>&1 || true
-      fi
+      _st_close_self
       return 0
     fi
     [ -n "$allfin" ] && was_all_fin=1 || { was_all_fin=; _ST_SAW_UNFINISHED=1; }
