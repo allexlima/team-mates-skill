@@ -47,6 +47,12 @@
 #   team.sh role-promote <name> [--force]  -> copy a project role into the shared library, secret/PII scan first;
 #                                             library ahead always refuses (run role-pull).
 #                                             exit 0 ok/no-op, 2 bad name/option or PII hit, 3 not in project, 5 conflict (needs --force)
+#   team.sh prompt <team> <role> --task T<n> --lead <name> --brief <file> [--build] [--no-gate] [--tl <name>] [--run <dir>] [--branch <name>]
+#                                          -> render a teammate prompt to stdout from references/prompt-template.md: the brief
+#                                             (goal, files owned/readable, constraints; you write it), the role spec, the roster from
+#                                             <run>/tasks.md, and the standing instructions. --build adds the worktree, git and gate
+#                                             rules (--no-gate: leave commits on the branch). --run defaults to the newest
+#                                             .team/runs/*-<team>. exit 2 bad option/missing task, 3 no run dir or template
 #   team.sh status [--watch | --json [--sync]] <team>
 #                                          -> one frame: "<team> · N/M reported · HH:MM:SS", a progress bar, a NEEDS YOU block
 #                                             (only when a teammate is waiting/dead/model gone/stalled?), then ROLE | STATE | STEP | AGE;
@@ -60,7 +66,7 @@
 #                                             exit 1 already running
 #   team.sh sync [--clear] <team>          -> lead sidebar status pill + progress bar and a `cmux log --source team`
 #                                             event; --clear removes both. Best-effort (warns, never fails the caller)
-#   (role, roles, role-pull, role-promote live in lib/roles.sh; status, monitor, sync in lib/status.sh)
+#   (role, roles, role-pull, role-promote live in lib/roles.sh; prompt in lib/prompt.sh; status, monitor, sync in lib/status.sh)
 #   team.sh facts-lint [--pre-append <file>]  -> freshness of .team/facts.md facts (FRESH/CHECK/GONE/NOANCHOR + DUP); --pre-append scans <file> for secrets
 #   team.sh doccheck            -> doc drift guard: retired phrases, subcommands documented, SKILL flags present in HELP
 #   team.sh --help              -> prints this header. Any other unknown subcommand exits 2 (it never falls through to spawn).
@@ -68,7 +74,7 @@
 # 3 not found / missing dependency (role, model, registry, python3, cmux); 4 team cap reached or spawn lock busy;
 # 5 role-promote/role-pull conflict (needs --force).
 # .team/ always means the MAIN checkout's .team/, also when run from inside a linked worktree.
-# Needs python3 (models, pick-model, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
+# Needs python3 (models, pick-model, prompt, spawn, close, finish, reap, show/list); those subcommands exit 3 without it.
 # Pane commands (spawn, close, finish, reap, lead-title, show/list, monitor) need a multiplexer (lib/mux.sh):
 # cmux >= 0.65.0 answering `cmux ping` (default, recommended), else tmux. They exit 3 with an install hint
 # when neither is there. spawn, lead-title, show/list and monitor open or focus panes, so they must run
@@ -148,7 +154,7 @@ _team_allow+=",mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
 _team_deny="Bash(git commit *--no-veri*),Bash(git commit -n*),Bash(git commit * -n*)"
 # Dispatch: anything not listed is refused here, because an unknown word would
 # otherwise fall through to the spawn path below and open a real pane.
-subs="init lead-title reap gate-init clean close finish models pick-model role roles role-pull role-promote status monitor sync facts-lint doccheck show list spawn"
+subs="init lead-title reap gate-init clean close finish models pick-model role roles role-pull role-promote prompt status monitor sync facts-lint doccheck show list spawn"
 here=$(cd "$(dirname "$0")" && pwd)
 _usage() { sed -n '2,/^set -euo pipefail/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 case ${1:-} in
@@ -483,15 +489,15 @@ case $sub in reap|close|finish|show|list|status|monitor|sync|spawn|clean) _reg_d
 [ -f "$here/lib/mux.sh" ] || { echo "team.sh: $here/lib/mux.sh is missing" >&2; exit 3; }
 # shellcheck source=lib/mux.sh
 . "$here/lib/mux.sh"
-for _lib in "$here/lib/roles.sh" "$here/lib/status.sh"; do
+for _lib in "$here/lib/roles.sh" "$here/lib/status.sh" "$here/lib/prompt.sh"; do
   # shellcheck source=/dev/null
   if [ -f "$_lib" ]; then . "$_lib"; fi
 done
 case $sub in
-  role|roles|role-pull|role-promote|status|monitor|sync)
+  role|roles|role-pull|role-promote|prompt|status|monitor|sync)
     fn="sub_${sub//-/_}"
     declare -F "$fn" >/dev/null || {
-      case $sub in status|monitor|sync) l=status ;; *) l=roles ;; esac
+      case $sub in status|monitor|sync) l=status ;; prompt) l=prompt ;; *) l=roles ;; esac
       echo "team.sh: '$sub' needs $here/lib/$l.sh, which is missing" >&2; exit 3; }
     "$fn" "$@"; exit $? ;;
 esac
@@ -725,7 +731,7 @@ if [ "$sub" = facts-lint ]; then
     # || true: evidence with no file:line makes grep exit 1, which pipefail + set -e
     # would turn into a silent abort of the whole lint.
     file=$(printf '%s\n' "$line" | grep -oE '[A-Za-z0-9_./-]+:[0-9]+' | head -1 | cut -d: -f1 || true)
-    if printf '%s\n' "$line" | grep -q '@nogit' || [ -z "$sha" ]; then st=NOANCHOR
+    if grep -q '@nogit' <<<"$line" || [ -z "$sha" ]; then st=NOANCHOR
     elif [ -z "$file" ]; then st=CHECK
     elif [ ! -e "$root/$file" ] && [ ! -e "$file" ]; then st=GONE
     elif git -C "$root" diff --quiet "$sha" -- "$file" 2>/dev/null; then st=FRESH
@@ -751,7 +757,9 @@ if [ "$sub" = doccheck ]; then
   done
   hdr=$(sed '/^set -euo pipefail/q' "$here/team.sh")
   for s in $subs; do
-    printf '%s\n' "$hdr" | grep -qw -- "$s" || { echo "doccheck: subcommand '$s' not documented in the header" >&2; rc=1; }
+    # A here-string, not `printf | grep -q`: grep -q exits at the first match, printf then takes
+    # SIGPIPE, and pipefail reports a documented subcommand as missing (flaky on big headers).
+    grep -qw -- "$s" <<<"$hdr" || { echo "doccheck: subcommand '$s' not documented in the header" >&2; rc=1; }
   done
   for fl in $(sed -n '4p' "$here/../SKILL.md" | grep -oE '\-\-[a-z-]+'); do
     grep -qF -- "$fl" "$here/../references/HELP.md" || { echo "doccheck: $fl is in SKILL.md but not HELP.md" >&2; rc=1; }
@@ -1128,6 +1136,8 @@ if [ "$rundir" != - ] && [ -f "$plugin/hooks/hooks.json" ]; then
   envs+=" TEAM_EVENTS_FILE=$(printf %q "$ev/$role.jsonl") TEAM_SCRATCH=$(printf %q "$scratch")"
   envs+=" TEAM_FENCE_ROOTS=$(printf %q "$dir:$rundir:$scratch")"
   plugarg=" --plugin-dir=$(printf %q "$(cd "$plugin" && pwd)")"
+elif [ "$rundir" = - ]; then
+  echo "no run dir: teammate runs without the event log and fence" >&2
 fi
 # Our own session id, recorded in the registry, so a later round can `claude --resume` it. A resumed
 # session keeps its id (live-probed). Permission mode and allowlist are passed again on resume; the

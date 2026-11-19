@@ -355,7 +355,7 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   rules miss a git command that starts with a global option
   (`git -C <dir> commit --no-verify`, `git -c core.hooksPath=/dev/null commit`), a wrapper
   (`sh -c`, `/usr/bin/git`), or a combined short flag such as `-an` (measured with live
-  `claude -p` probes, CLI 2.1.306). A PreToolUse fence for the git forms is planned. The deny
+  `claude -p` probes, CLI 2.1.306). For teammates with a run dir, the plugin fence below blocks those forms. The deny
   also fails safe the other way: a commit whose inline `-m` message names the flag is refused,
   so write such a message to a file and use `git commit -F <file>`.
   Haiku-tier teammates always run unattended in dontAsk mode with a per-teammate allowlist
@@ -364,7 +364,8 @@ available and fit the run; `--no-caveman` and `--no-gate` are the opt-outs.
   haiku tier; they are refused on build runs.
 - A teammate with a run dir also loads the skill's `plugin/` folder for that session only
   (`--plugin-dir`; nothing is written to your settings, and your own hooks and cmux's still
-  run).
+  run). Without a run dir, spawn warns on stderr that the teammate runs without the event
+  log and fence.
   - Event log: one line per hook event (time, event, tool name, notification type,
     and a flag when a subagent raised it) in `.team/runs/<run>/events/<role>.jsonl`. Tool
     input, prompts, messages and agent ids are never recorded.
