@@ -28,6 +28,10 @@ Open items. Each one names where the work lives.
       busy full gate run (tm2-hooks): the pty driver saw no exit after 60 rounds of `q`. Not
       reproduced: 10 of 10 passes with 14 CPU-burning processes. The test now prints the last 500
       bytes of pty output and a `ps` snapshot when it hangs; read those on the next occurrence.
+      Ruled out: a lone `q` typed outside a `read` window. A single `q` sent at 1, 3 and 6 s, and
+      during a render slowed by 3 s of `cmux identify`, still exits 0. 8 of 8 full-suite runs and
+      10 of 10 isolated runs passed here, so the cause is probably load or cmux timing on a busy
+      machine.
 
 ## Shell lint
 
