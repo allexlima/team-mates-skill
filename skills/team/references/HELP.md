@@ -284,7 +284,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   same states, NEEDS YOU rows, overall % and team ETA (it reads `team.sh status --json` and
   shows those numbers as they are, so both monitors always agree), plus: one card per live
   teammate (state, task, step, a progress bar, its own ETA, a sparkline of its % over time,
-  the tool call in flight and how long it has run, context use and tokens), the backlog
+  the tool call in flight and how long it has run, context use and output tokens), the backlog
   with an estimated finish per open task, an event log, and a detail view per teammate
   (report, recent tool calls, progress history, session info). Keys: `1`-`9` focus that teammate's pane, arrows/tab move between cards,
   `enter` or a click opens the detail view, `s` shows the selected pane, `r` refreshes,

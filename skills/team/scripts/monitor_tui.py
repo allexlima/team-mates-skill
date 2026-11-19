@@ -840,6 +840,7 @@ def selftest():
     tx2 = Transcript(sid, root=root)
     st = tx2.poll(now)
     check("T2: tokens deduped per message (1010+50, 3025+7)", st["tokens"] == 1010 + 50 + 3025 + 7, st["tokens"])
+    check("T2b: output tokens are counted once per message (the largest value: 50 + 7), apart from input/cache", st["output"] == 57, st["output"])
     check("T3: context = newest input incl. cache (3025)", st["ctx"] == 3025, st["ctx"])
     check("T4: finished tool cleared, open one pending", st["pending"]["name"] == "Read" and st["pending"]["brief"] == "c.py", st)
     tx3 = Transcript(sid, root=root, model_hint="system.ai.claude-x[1m]")
@@ -961,7 +962,7 @@ if HAVE_TEXTUAL:
         line2 = Text.assemble(bar, label, eta_t)
         n = lambda states: sum(1 for m in mates if m["state"] in states)
         alerts = len(alerts_of(view))
-        tok = sum((v or {}).get("tokens") or 0 for v in (view.tx or {}).values())
+        tok = sum((v or {}).get("output") or 0 for v in (view.tx or {}).values())
         chips = Text()
         chips += chip("◐", f"{n(('WORKING',))} working", PAL["active"])
         if alerts:
@@ -977,7 +978,7 @@ if HAVE_TEXTUAL:
         if doc.get("prs"):
             chips += chip("⇡", f"{len(doc['prs'])} PR" + ("s" if len(doc["prs"]) != 1 else ""), PAL["done"])
         if tok:
-            chips += chip("Σ", f"{fmt_tok(tok)} tok", PAL["dim"])
+            chips += chip("Σ", f"{fmt_tok(tok)} out", PAL["dim"])
         chips.truncate(width, overflow="ellipsis")
         rows = [g1, line2, chips]
         if closing:
@@ -1023,8 +1024,8 @@ if HAVE_TEXTUAL:
         meta = Text()
         if tx.get("ctx_pct") is not None:
             meta.append(f" ctx {tx['ctx_pct']}%", style=PAL["warn"] if tx["ctx_pct"] >= 80 else PAL["dim"])
-        if tx.get("tokens"):
-            meta.append(f" · {fmt_tok(tx['tokens'])}", style=PAL["dim"])
+        if tx.get("output"):
+            meta.append(f" · {fmt_tok(tx['output'])} out", style=PAL["dim"])
         spw = max(3, width - meta.cell_len - 1)
         l4 = Text.assemble(spark(view.spark.get(m["title"], []) if view.spark else [], spw, color), " ", meta)
         l4.truncate(width, overflow="ellipsis")
@@ -1186,7 +1187,7 @@ if HAVE_TEXTUAL:
                          ("task", m.get("task")), ("model", m.get("model")), ("subagent model", m.get("submodel")),
                          ("session", m.get("session_id")), ("cwd", m.get("cwd")), ("branch", m.get("branch")),
                          ("pane", f"{m.get('backend')} {m.get('ref')}"), ("report", m.get("report")),
-                         ("tokens", fmt_tok(tx.get("tokens"))), ("context", f"{fmt_tok(tx.get('ctx'))} ({tx.get('ctx_pct')}%)" if tx.get("ctx") else "—"),
+                         ("output tokens", fmt_tok(tx.get("output"))), ("tokens processed (input + cache reads, every turn)", fmt_tok(tx.get("tokens"))), ("context", f"{fmt_tok(tx.get('ctx'))} ({tx.get('ctx_pct')}%)" if tx.get("ctx") else "—"),
                          ("tool calls", tx.get("tools"))):
                 info.add_row(Text(k, style=PAL["dim"]), Text(str(v if v not in (None, "") else "—")))
 
