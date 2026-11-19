@@ -21,6 +21,9 @@ All notable changes to this project are recorded here. The format follows
   `permission` state for a tool-permission prompt, and measured idle and
   activity age (see `--help`). `status --json` adds `event_state`,
   `event_age_s` and `open_tool`.
+- Step progress: a status line `T<n>: k/N · <step>` sets the teammate's % to
+  k/N in `status` and the monitor (see `--help`); `status --json` adds
+  `step_k` and `step_n`.
 
 ### Fixed
 
