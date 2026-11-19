@@ -153,8 +153,10 @@ _st_state() {
 # as activity. <open_tool> is the tool of a PreToolUse with no later PostToolUse(Failure),
 # PermissionDenied, UserPromptSubmit (a new turn: a denied tool never gets a PostToolUse),
 # Stop or SessionEnd: a long tool is running, so silence is not a stall.
-# A subagent's events ("sub":1, including its PermissionRequest) count as activity only: the
-# main thread's state and open tool are what the row shows.
+# A subagent's events ("sub":1) count as activity only: the main thread's state and open tool
+# are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
+# user too: it shows PERMISSION until that subagent's next tool result or denial, or until any
+# main-thread event.
 # Reads only the last 200 lines; the writer's fixed format lets awk parse it.
 # ---------------------------------------------------------------------------
 _st_events() {
@@ -165,8 +167,16 @@ _st_events() {
       s = substr($0, RSTART, RLENGTH); sub(/^"[^"]*": *"?/, "", s); return s }
     { t = val("t") + 0; ev = val("ev"); if (ev == "" || t == 0) next
       last = t
-      if (ev == "SubagentStart" || ev == "SubagentStop" || val("sub") == "1") next
-      nt = val("ntype"); tool = val("tool")
+      if (val("sub") == "1") {
+        if (ev == "PermissionRequest") subperm = 1
+        else if (ev == "PostToolUse" || ev == "PostToolUseFailure" || ev == "PermissionDenied") subperm = 0
+        next }
+      if (ev == "SubagentStart" || ev == "SubagentStop") next
+      nt = val("ntype")
+      # the notification raised by a subagent prompt carries no agent_id: it is that same prompt
+      if (subperm && ev == "Notification" && nt == "permission_prompt") next
+      subperm = 0
+      tool = val("tool")
       if (ev == "PermissionRequest" || (ev == "Notification" && nt == "permission_prompt")) state = "PERMISSION"
       else if (ev == "Stop" || ev == "StopFailure" || (ev == "Notification" && nt == "idle_prompt")) { state = "IDLE"; open = "" }
       else if (ev == "SessionEnd") { state = "ENDED"; open = "" }
@@ -175,7 +185,7 @@ _st_events() {
       if (ev == "PreToolUse") open = (tool == "" ? "?" : tool)
       else if (ev == "PostToolUse" || ev == "PostToolUseFailure" || ev == "PermissionDenied" || ev == "UserPromptSubmit") open = ""
     }
-    END { if (state == "") exit; a = now - last; if (a < 0) a = 0
+    END { if (subperm) state = "PERMISSION"; if (state == "") exit; a = now - last; if (a < 0) a = 0
           printf "%s %d %s\n", state, a, (open == "" ? "-" : open) }'
 }
 

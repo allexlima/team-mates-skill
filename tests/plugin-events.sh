@@ -219,6 +219,18 @@ add '{"t":204,"ev":"PreToolUse","tool":"Read","sub":1}'; add '{"t":205,"ev":"Pos
 check "subagent tool events keep PERMISSION and the open tool, count as activity" '[ "$(ev "$F" 210)" = "PERMISSION 5 Bash" ]'
 add '{"t":206,"ev":"PostToolUse","tool":"Bash"}'; add '{"t":207,"ev":"PreToolUse","tool":"Read","sub":1}'
 check "subagent tool never opens a main-thread tool" '[ "$(ev "$F" 210)" = "WORKING 3 -" ]'
+: > "$F"; add '{"t":300,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":301,"ev":"SubagentStart","sub":1}'
+add '{"t":302,"ev":"PreToolUse","tool":"Bash","sub":1}'; add '{"t":303,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+check "a subagent's own permission request is PERMISSION" '[ "$(ev "$F" 1203)" = "PERMISSION 900 Agent" ]'
+add '{"t":310,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "its next tool result clears it" '[ "$(ev "$F" 310)" = "WORKING 0 Agent" ]'
+add '{"t":311,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":312,"ev":"PermissionDenied","tool":"Edit","sub":1}'
+check "a denied subagent request clears it" '[ "$(ev "$F" 312)" = "WORKING 0 Agent" ]'
+add '{"t":313,"ev":"PermissionRequest","tool":"Edit","sub":1}'; add '{"t":314,"ev":"PostToolUse","tool":"Agent"}'
+check "a main-thread event clears it" '[ "$(ev "$F" 314)" = "WORKING 0 -" ]'
+add '{"t":320,"ev":"PreToolUse","tool":"Agent"}'; add '{"t":321,"ev":"PermissionRequest","tool":"Bash","sub":1}'
+add '{"t":322,"ev":"Notification","ntype":"permission_prompt"}'; add '{"t":330,"ev":"PostToolUse","tool":"Bash","sub":1}'
+check "the prompt's notification belongs to the subagent: its tool result clears both" '[ "$(ev "$F" 330)" = "WORKING 0 Agent" ]'
 ln -s "$F" "$W/link.jsonl"
 check "symlinked log ignored" '[ -z "$(ev "$W/link.jsonl" 180)" ]'
 st() { bash -c '. "$1"; shift; _st_state "$@"' _ "$LIB" "$@"; }
