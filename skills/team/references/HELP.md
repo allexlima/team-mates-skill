@@ -233,8 +233,8 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   five states below; the STEP column is dropped below 60 columns.
     permission   Waiting on a tool-permission prompt (its event log's last main-thread
                  event is a permission request): approve or deny it in its pane.
-    waiting      AskUserQuestion notification detected, or an AskUserQuestion still open
-                 in its event log — teammates must not use this;
+    waiting      An AskUserQuestion still open in its event log, or without a log an
+                 AskUserQuestion notification — teammates must not use this;
                  `show` its pane and SendMessage it to send NEEDS INPUT to the lead instead.
                  Not detected for haiku/dontAsk tier.
     model gone   Its model is no longer available — respawn with a different model
@@ -244,9 +244,10 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
                  not "stuck": a subagent wait looks the same, so look at its pane before
                  messaging it
     working      Doing its work (a note says "report on disk" once it has reported)
-    idle         Turn ended with no report yet (a Stop or idle prompt in the event log, or
-                 cmux's "Completed" notification); routine while it waits on a peer or the lead,
-                 so it is not pinned under NEEDS YOU (it becomes stalled? after 10 minutes).
+    idle         Turn ended with no report yet (a Stop, idle prompt or SessionEnd in the event
+                 log, or without a log cmux's "Completed" notification); routine while it waits
+                 on a peer or the lead, so it is not pinned under NEEDS YOU. A measured idle
+                 stays idle; one with no event log becomes stalled? after 10 minutes.
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
                  a ready task, on its own line or claimed by starting its status line with

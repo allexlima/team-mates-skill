@@ -116,10 +116,13 @@ fi
 #   DEAD        surface gone without the marker
 #   MODEL_GONE  model (or subagent model) no longer offered
 #   PERMISSION  the event log's last state-bearing event is a permission request (_st_events)
-#   WAITING     newest notification is an AskUserQuestion ("Claude question")
-#   STALLED     mid-work milestone, no status/report write for >=10 min
-#   IDLE        newest notification is "Completed in …" and no report on disk
-#               (routine while waiting on a peer; after 10 silent min it is STALLED)
+#   WAITING     an AskUserQuestion still open in the event log; without a log, the newest
+#               notification is an AskUserQuestion ("Claude question")
+#   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
+#               measured WORKING with no event and no open tool for >=10 min
+#   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
+#               or without a log the newest notification is "Completed in …" (routine while
+#               waiting on a peer; after 10 silent min it is STALLED)
 #   WORKING     everything else (including "report on disk" while still alive)
 # ---------------------------------------------------------------------------
 _st_state() {
@@ -157,8 +160,10 @@ _st_state() {
 # are what the row shows. The one exception is a subagent's PermissionRequest, a wait on the
 # user too: it shows PERMISSION until the next subagent tool result or denial (subagents are
 # not told apart, so any subagent's clears it), or until any main-thread event.
-# Reads only the last 2000 lines, so a burst of subagent tool calls cannot push the main
-# thread's PermissionRequest out of view; the writer's fixed format lets awk parse it.
+# Reads only the last 2000 lines; the writer's fixed format lets awk parse it.
+# shortcut: about 1000 subagent tool calls after a main PermissionRequest still push it out of
+# view (the row falls back to the older inference); scan backwards for the last main-thread
+# line if that shows up in practice.
 # ---------------------------------------------------------------------------
 _st_events() {
   local f=$1 now=$2
