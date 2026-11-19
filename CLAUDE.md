@@ -72,7 +72,7 @@ with `TEAM_MEMBER` unset (an inherited value makes
 ```
 bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
 bash skills/team/scripts/team.sh doccheck
-shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh tests/*.sh
+shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh skills/team/plugin/hooks/*.sh tests/*.sh
 bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
@@ -81,7 +81,7 @@ bash tests/monitor-tui.sh     # status --json contract, TUI forecast/transcripts
 bash tests/team-finish.sh     # finish guards, --resume, round baselines
 bash tests/tmux.sh            # tmux fallback backend (real-tmux smoke test skips without tmux)
 bash tests/prompt.sh          # team.sh prompt: template rendering, build/gate blocks, exit codes
-bash tests/plugin-events.sh   # once the file is on dev; CI skips a missing suite
+bash tests/plugin-events.sh   # event-hook writer: 4 fields only, no tool input
 bash skills/team/scripts/team.sh facts-lint # CHECK rows are expected when cited files changed
 ```
 
