@@ -10,7 +10,7 @@ case $ev in ''|*[!A-Za-z]*) f= ;; esac
 if [ -z "$f" ] || [ -L "$f" ] || [ ! -d "${f%/*}" ]; then cat >/dev/null; exit 0; fi
 # No notion of nesting: a nested tool_name before tool_input would be logged; real payloads put it top-level first.
 v='[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_.:-]\{1,128\}\)".*'
-x=$(head -c 8192 | sed -n "1!q; s/\"tool_input\".*//; h; s/.*\"tool_name\"$v/,\"tool\":\"\1\"/p; g; s/.*\"notification_type\"$v/,\"ntype\":\"\1\"/p")
+x=$(head -c 8192 | LC_ALL=C sed -n "1!q; s/\"tool_input\".*//; h; s/.*\"tool_name\"$v/,\"tool\":\"\1\"/p; g; s/.*\"notification_type\"$v/,\"ntype\":\"\1\"/p")
 cat >/dev/null
 set -f
 # shellcheck disable=SC2086 # split $x into its two fields on purpose; set -f stops globbing
