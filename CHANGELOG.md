@@ -6,29 +6,60 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
 ### Added
 
+- A Textual TUI monitor (`scripts/monitor_tui.py`), fed by a new
+  `team.sh status --json`. It shows one card per teammate with its
+  self-reported progress, an ETA marked as a forecast, a details screen and a
+  `--demo` mode. Textual is optional; without it the text monitor runs as
+  before. `tests/monitor-tui.sh` is in the gate set. (#14)
 - `team.sh prompt`, which renders each teammate prompt from
-  `references/prompt-template.md` plus a short per-run brief.
-- `plugin/`, a session-only hook plugin whose `event.sh` appends one line per
+  `references/prompt-template.md` plus a short per-run brief, so `SKILL.md`
+  keeps only the procedure. (#13)
+- `plugin/`, a session-only hook plugin. Its `event.sh` appends one line per
   Claude Code event (time, event, tool name, notification type; never tool
-  input) to `$TEAM_EVENTS_FILE`, and whose PreToolUse `fence.py` denies
-  edits outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. `spawn`
-  loads it (`--plugin-dir`) for every teammate with a run dir, and warns on
-  stderr when there is none.
-- `clean` also removes finished teammates' scratch dirs and system prompts.
-- `status` reads live teammates' state from that event log, under tmux too: a
-  `permission` state for a tool-permission prompt, and measured idle and
-  activity age (see `--help`). `status --json` adds `event_state`,
-  `event_age_s` and `open_tool`.
-- Step progress: a status line `T<n>: k/N · <step>` sets the teammate's % to
-  k/N in `status` and the monitor (see `--help`); `status --json` adds
-  `step_k` and `step_n`.
+  input) to `$TEAM_EVENTS_FILE`. Its PreToolUse `fence.py` denies edits
+  outside `$TEAM_FENCE_ROOTS` and git commands that skip hooks. The fence
+  narrows the hole but does not make `Bash` safe. (#7, #5)
+- README GIFs of the monitor and `--help`, recorded from the `.tape` scripts in
+  `assets/readme/tapes/`. (#16)
+- `team.sh spawn` loads that plugin (`--plugin-dir`) for every teammate with a
+  run dir and sets its events file, scratch dir and fence roots; it warns on
+  stderr when there is no run dir. `team.sh clean` also removes finished
+  teammates' scratch dirs and system prompts. (#18)
+- `status` reads live teammates' state from the event log, under tmux too: a
+  `permission` state for a teammate blocked on a tool-permission prompt, and
+  idle and activity age taken from the events. `status --json` adds
+  `event_state`, `event_age_s` and `open_tool`. (#20)
+- Step progress: a teammate status line `T<n>: k/N · <step>` sets that
+  teammate's self-reported % to k/N in `status` and the monitor (see `--help`);
+  `status --json` adds `step_k` and `step_n`. (#21)
+
+### Changed
+
+- The README is rewritten from scratch around the pane-grid theme. (#19)
+- The monitor reads the context window of 1M-token models correctly, and
+  `status --json --sync` polls about twice as fast with 7 live teammates. (#14)
+- The TUI's token total (`Σ … out`) counts output tokens, not cache re-reads,
+  which had inflated it. (#14)
 
 ### Fixed
 
-- `clean` no longer removes another team's build-run worktrees when one team's
-  name is a prefix of another's.
+- `doccheck` no longer reports a documented subcommand as missing: a
+  `printf | grep -q` pipeline took SIGPIPE under `pipefail`. Four other such
+  pipelines in `team.sh` and `lib/status.sh` now use here-strings too. (#17)
+- `tests/status-render.sh` G7 passes under the C locale. (#15)
+- `team.sh clean` no longer removes another team's build-run worktrees when one
+  team's name is a prefix of another's. (#18)
+
+### Known limits
+
+- `tests/status-render.sh` AQ1 hangs now and then on a busy machine; the cause
+  is not found. The test prints the pty tail and a `ps` snapshot when it hangs.
+  (#15)
+- Mouse clicks in the TUI under cmux are unverified.
 
 ## [0.1.1] - 2026-11-18
 
@@ -106,5 +137,6 @@ then this release's fixes and the new contributor flow.
 - Tool-list flags are passed as `--flag=value`, so a variadic flag can no
   longer swallow the prompt.
 
-[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/allexlima/team-mates-skill/releases/tag/v0.1.1
