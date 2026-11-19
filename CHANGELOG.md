@@ -38,6 +38,7 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- PLACEHOLDER (T37): README rewritten from scratch. (#?)
 - The monitor reads the context window of 1M-token models correctly, and
   `status --json --sync` polls about twice as fast with 7 live teammates. (#14)
 - The TUI's token total (`Σ … out`) counts output tokens, not cache re-reads,
