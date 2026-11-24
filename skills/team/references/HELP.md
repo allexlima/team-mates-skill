@@ -240,7 +240,8 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     model gone   Its model is no longer available — respawn with a different model
     dead         Session exited — respawn it (a note says when its report is safe on disk)
     stalled?     No status update in 10 minutes while mid-work; with an event log, no event
-                 in 10 minutes and no tool still running (45 minutes while `gating`). This is "no update in a while",
+                 in 10 minutes and no tool still running (45 minutes while `gating`, when an
+                 idle or ended turn that long counts too). This is "no update in a while",
                  not "stuck": a subagent wait looks the same, so look at its pane before
                  messaging it
     gating       Inside a no-mistakes gate: the last line of its status file has `gating <sha>`
@@ -251,7 +252,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     idle         Turn ended with no report yet (a Stop, idle prompt or SessionEnd in the event
                  log, or without a log cmux's "Completed" notification); routine while it waits
                  on a peer or the lead, so it is not pinned under NEEDS YOU. A measured idle
-                 stays idle; one with no event log becomes stalled? after 10 minutes (45 while `gating`).
+                 stays idle; one with no event log becomes stalled? after 10 minutes.
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
                  a ready task, on its own line or claimed by starting its status line with
