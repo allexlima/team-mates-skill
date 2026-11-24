@@ -251,7 +251,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     idle         Turn ended with no report yet (a Stop, idle prompt or SessionEnd in the event
                  log, or without a log cmux's "Completed" notification); routine while it waits
                  on a peer or the lead, so it is not pinned under NEEDS YOU. A measured idle
-                 stays idle; one with no event log becomes stalled? after 10 minutes.
+                 stays idle; one with no event log becomes stalled? after 10 minutes (45 while `gating`).
                  Exception: it is pinned as "idle with work pending" while an unassigned
                  ready task exists (owner `any` or not live), or while the idle teammate holds
                  a ready task, on its own line or claimed by starting its status line with
