@@ -245,7 +245,7 @@ _st_row() {
     effective_run="$rundir"
   fi
 
-  local rpt= stf=
+  local rpt='' stf=''
   if [ -n "$effective_run" ]; then
     rpt="$effective_run/reports/$role.md"
     stf="$effective_run/status/$role.txt"
@@ -327,7 +327,7 @@ _st_row() {
   fi
 
   # ------ FACTS -----------------------------------------------------------
-  local fin= alive= gone= waiting= idle= stalled= parked=
+  local fin='' alive='' gone='' waiting='' idle='' stalled='' parked=''
   [ "$marker" = finished ] && fin=1
 
   # STALLED: derived signals only; fires during mid-work milestones, silent >10m
@@ -390,7 +390,7 @@ _st_row() {
       fi
       if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
         # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
-        local uuid= um nl
+        local uuid='' um nl
         um=$'\n'"$_ST_UUID_MAP"
         case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
         if [ -n "$uuid" ]; then
@@ -418,10 +418,10 @@ _st_row() {
   # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
   # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
   # waiting only from an open AskUserQuestion, and a permission request is its own state.
-  local evs=- eva=- evt=- perm= _ev
+  local evs=- eva=- evt=- perm='' _ev
   if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
     read -r evs eva evt <<<"$_ev"
-    idle= stalled= waiting=
+    idle='' stalled='' waiting=''
     case $evs in
       PERMISSION) perm=1 ;;
       IDLE|ENDED) [ "$ms" = reported ] || idle=1 ;;
@@ -1134,7 +1134,7 @@ _st_close_self() {
 # ---------------------------------------------------------------------------
 
 sub_status() {
-  local watch= json= sync=
+  local watch='' json='' sync=''
   while :; do case ${1:-} in
     --watch) watch=1; shift ;; --json) json=1; shift ;; --sync) sync=1; shift ;;
     *) break ;;
@@ -1184,7 +1184,7 @@ sub_status() {
       *) printf 'monitor: the TUI stopped (exit %s); using the classic monitor\n' "$trc" >&2; sleep 2 ;;
     esac
   fi
-  local km= mouse=0
+  local km='' mouse=0
   if [ "$keys" = 1 ]; then
     km=$(mktemp "${TMPDIR:-/tmp}/team-keymap.XXXXXX") || km=
     # Mouse capture takes click-drag away from the terminal's own text selection
@@ -1209,7 +1209,7 @@ sub_status() {
   local autoclose=1 was_all_fin=
   [ "${TEAM_MONITOR_AUTOCLOSE:-1}" = 0 ] && autoclose=0
 
-  local prev= recs frame k
+  local prev='' recs frame k
   while [ -f "$reg" ]; do
     recs=$(_st_collect "$team" || true)
     frame=$(printf '%s\n' "$recs" \
@@ -1250,7 +1250,7 @@ sub_status() {
           [1-9]) _st_focus "$team" "$km" "$k" && prev= ;;
           $'\033')
             # Possible SGR mouse report: ESC [ < btn ; col ; row (M press | m release).
-            local seq= c
+            local seq='' c
             while read -rsn1 -t 0.2 c 2>/dev/null; do
               seq+=$c
               case $c in [Mm]) break ;; esac
@@ -1430,7 +1430,7 @@ _st_sync_apply() {
   # means at least one real self-report, which is what switches the bar over.
   local pctsum=0 pctn=0 selfn=0
   local role title state ms _step _age _note pct
-  local s_done= s_total= s_pct=-1 s_est=0
+  local s_done='' s_total='' s_pct=-1 s_est=0
   while IFS=$'\t' read -r role title state ms _step _age _note pct _; do
     [ -n "$title" ] || continue
     if [ "$role" = @summary ]; then
@@ -1505,7 +1505,7 @@ _st_sync_apply() {
     cur_rows="${cur_rows}${title}"$'\t'"${state}"$'\t'"${ms}"$'\n'
     prev=$(awk -F'\t' -v t="$title" '$1==t {print; exit}' <<<"$prev_rows" 2>/dev/null || true)
     pstate=$(awk -F'\t' '{print $2}' <<<"$prev"); pms=$(awk -F'\t' '{print $3}' <<<"$prev")
-    msg= lvl=
+    msg='' lvl=''
     if [ -z "$prev" ] || [ "$state" != "$pstate" ]; then
       case $state in
         PERMISSION) msg="waiting on a permission prompt" lvl=warning ;;
