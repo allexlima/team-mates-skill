@@ -72,7 +72,7 @@ with `TEAM_MEMBER` unset (an inherited value makes
 ```
 bash -n skills/team/scripts/team.sh skills/team/scripts/lib/*.sh
 bash skills/team/scripts/team.sh doccheck
-shellcheck -S error skills/team/scripts/team.sh skills/team/scripts/lib/*.sh skills/team/plugin/hooks/*.sh tests/*.sh
+shellcheck -S warning skills/team/scripts/team.sh skills/team/scripts/lib/*.sh skills/team/plugin/hooks/*.sh tests/*.sh
 bash tests/roles.sh
 bash tests/team-build.sh      # spawn/registry/close/reap
 bash tests/team-cli.sh        # secret regex, facts-lint
