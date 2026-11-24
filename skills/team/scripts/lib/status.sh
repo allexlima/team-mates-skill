@@ -1084,6 +1084,7 @@ _st_collect() {
 _ST_TUI=()
 _st_tui_pick() {
   _ST_TUI=()
+  # shellcheck disable=SC2154 # $here is set by team.sh before it sources this lib
   local py="$here/monitor_tui.py"
   [ "${TEAM_MONITOR_UI:-auto}" != classic ] && [ -f "$py" ] || return 1
   if python3 -c 'import sys, textual; sys.exit(not 1 <= int(textual.__version__.split(".")[0]) <= 8)' 2>/dev/null; then
@@ -1176,6 +1177,7 @@ sub_status() {
     # Leave the terminal as we found it on every exit path, mouse mode included.
     # The trap runs after sub_status returned, when its locals are gone (set -u would kill it and
     # turn a clean exit into 1), so the values are baked into the string now.
+    # shellcheck disable=SC2064 # expanding now is the point (see above)
     trap "rm -f -- $(printf %q "$km") 2>/dev/null
           [ $mouse = 1 ] && printf '\\033[?1006l\\033[?1000l'
           stty echo 2>/dev/null; printf '\\033[?25h'" EXIT INT TERM
@@ -1432,7 +1434,7 @@ _st_sync_apply() {
   # Phase, pill colour and log level move together (one palette with the pane)
   local phase pill_color level
   if [ "$total" -gt 0 ] && [ "$reported" -ge "$total" ]; then
-    phase=done; pill_color=$_ST_C_DONE; level=success
+    phase="done"; pill_color=$_ST_C_DONE; level=success
   elif [ "$needs" -gt 0 ]; then
     phase="needs you"; pill_color=$_ST_C_ALERT; level=warning
   elif [ "$reported" -gt 0 ] || [ -n "$started" ]; then

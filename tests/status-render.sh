@@ -613,7 +613,7 @@ pill=$(grep -E '^set-status ' "$CMUX_LOG" | head -1)
 # _st_row must therefore never emit an empty field -- absent values use '-'.
 RUNN="$G/.team/runs/2026-10-08-n1"; mkdir -p "$RUNN/reports" "$RUNN/status"
 printf 'plain step with no note\n' > "$RUNN/status/q.txt"
-rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
+rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
 { [ "$nf" = 14 ] && [ -z "$empty" ]; } \
@@ -628,7 +628,7 @@ got=$(printf '%s\n' "$rec" | bash -c 'IFS=$'"'"'\t'"'"' read -r a b c d e f g pc
 
 # N12  step-based progress: "T<n>: k/N · step" gives pct = k/N; "· NN%" stays the fallback.
 nrow() { printf '%s\n' "$1" > "$RUNN/status/q.txt"
-  LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null | awk -F'\t' '{print $8 "|" $13 "|" $14 "|" $5}'; }
+  LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null | awk -F'\t' '{print $8 "|" $13 "|" $14 "|" $5}'; }
 for c in 'T3: 2/5 · drafting tests|40|2|5|T3: 2/5 · drafting tests' \
          'T3: 2/5 · drafting · 90%|40|2|5|T3: 2/5 · drafting' \
          '3/4 · no task id|75|3|4|3/4 · no task id' \
@@ -641,7 +641,7 @@ for c in 'T3: 2/5 · drafting tests|40|2|5|T3: 2/5 · drafting tests' \
   [ "$got" = "$want" ] && pass "N12: '$in' gives pct|k|N|step $want" || fail "N12: '$in'" "got=[$got] want=[$want]"
 done
 printf 'T3: 2/5 · drafting\n' > "$RUNN/status/q.txt"
-js=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "'"$TEAM_REG_DIR"'/team-$1.tabs"; }; _st_row "$2" "$3" "" n1 | _st_json "$3" "'"$TEAM_REG_DIR"'/none.tabs" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null)
+js=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1 | _st_json "$3" "$TEAM_REG_DIR/none.tabs" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null)
 python3 -I -c 'import json,sys; m=json.loads(sys.argv[1])["teammates"][0]; sys.exit(not (m["pct"]==40 and m["step_k"]==2 and m["step_n"]==5 and list(m)[-2:]==["step_k","step_n"]))' "$js" \
   && pass "N12: status --json carries step_k/step_n last, pct 40" || fail "N12: json step fields" "${js:0:300}"
 
