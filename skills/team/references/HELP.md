@@ -79,7 +79,7 @@ forces one model everywhere; a haiku-tier id puts every role in dontAsk and is r
                  person: own worktree (.team/worktrees/<team>-<role>), own branch
                  (team/<team>-<role>, or the project's own convention when its
                  CLAUDE.md defines one, e.g. feat/<topic>), own commits, and its own no-mistakes gate —
-                 review → test → docs → lint → push → PR. The lead asks your OK first
+                 review → test → docs → lint → push → PR. The lead asks your OK first, with AskUserQuestion,
                  because this publishes branches/PRs. Judgment calls are forwarded
                  to the lead via NEEDS INPUT; you answer them in the lead pane.
                  Summary lists every PR and flags overlapping files.
