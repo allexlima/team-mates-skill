@@ -1224,7 +1224,7 @@ if HAVE_TEXTUAL:
             for tok, (g, w, role) in STATES.items():
                 s.add_row(Text(f"{g} {w}", style=f"bold {PAL[role]}"), Text(HINT.get(tok, {
                     "WORKING": "doing its work",
-                    "GATING": "inside a no-mistakes gate (status `gating <sha>`); stalled? only after 45 min of silence",
+                    "GATING": "inside a no-mistakes gate (status `gating <sha>`); stalled? waits longer than the usual 10 min",
                     "IDLE": "turn ended, no report yet (waits on a peer or you)",
                     "UNKNOWN": "state cannot be read here", "FINISHED": "reported, verified and closed"}.get(tok, "")),
                     style=PAL["dim"]))
