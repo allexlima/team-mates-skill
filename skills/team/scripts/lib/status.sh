@@ -31,6 +31,8 @@
 # Module-level state (reset by each _st_records call):
 #   _ST_UUID_MAP   "surface:N=UUID\n…" built from cmux list-panes (one python3 call)
 #   _ST_NOTIF_DATA "UUID|title|subtitle\n…" from cmux list-notifications --json
+#   _ST_IDENT      "surface:N <alive 1|0|-> <pane_ref|gone|->\n…" from one cmux identify per teammate
+#   (all three filled by one _ST_PROBE_PY process per refresh)
 #
 # FLAGS column note — WAITING covers AskUserQuestion only (title="Claude question").
 # Tool-approval permission prompts go to `cmux hooks feed`, NOT list-notifications,
@@ -40,6 +42,7 @@
 
 _ST_UUID_MAP=
 _ST_NOTIF_DATA=
+_ST_IDENT=
 # Stall limit (minutes) while a teammate is inside a no-mistakes gate: a gate runs about
 # 30 min, mostly silent waits on its review and CI, so 1.5x that before stalled?.
 _ST_GATE_STALL_MIN=45
@@ -355,18 +358,27 @@ _st_row() {
     # the row on any cmux error, so a _pane_of failure after it is an error too: UNKNOWN.
     # One `cmux identify` answers both questions (the surface exists; which pane holds it).
     # DEAD on not_found or a null pane_ref; any other error leaves the state UNKNOWN.
-    local idout idrc=0 pp=
-    idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
-    if [ "$idrc" != 0 ]; then
-      case $idout in *not_found*) alive=0 ;; esac
+    local idout idrc=0 pp='' idl=''
+    # Line-anchored (a leading newline), so surface:1 never matches surface:10.
+    local il=$'\n'"$_ST_IDENT"
+    case $il in *$'\n'"$ref "*) idl=${il#*$'\n'"$ref "}; idl=${idl%%$'\n'*} ;; esac
+    if [ -n "$idl" ]; then
+      read -r alive pp _ <<<"$idl"
+      [ "$alive" = - ] && alive=''
+      [ "$pp" = - ] && pp=''
     else
-      # caller object only, no python start per row. An object without a pane_ref means the
-      # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
-      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
-        pp=gone
-        [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+      idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
+      if [ "$idrc" != 0 ]; then
+        case $idout in *not_found*) alive=0 ;; esac
+      else
+        # caller object only, no python start per row. An object without a pane_ref means the
+        # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
+        if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
+          pp=gone
+          [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+        fi
+        case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
       fi
-      case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
     fi
     if [ "$alive" = 1 ]; then
       # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
@@ -458,74 +470,20 @@ _st_row() {
 _st_records() {
   local reg="$1" run="$2" leadpane="$3" team="$4"
 
-  # Build surface ref → UUID map (single python3 call).
-  # list-panes --json has surface_refs[] + surface_ids[] in parallel arrays.
-  _ST_UUID_MAP=
-  if command -v cmux >/dev/null && command -v python3 >/dev/null \
-      && [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
-    _ST_UUID_MAP=$(python3 -c "
-import json, subprocess, os, sys
-ws = os.environ.get('CMUX_WORKSPACE_ID', '')
-if not ws:
-    sys.exit(0)
-try:
-    r = subprocess.run(['cmux', 'list-panes', '--workspace', ws, '--json'],
-                      capture_output=True, text=True, timeout=5)
-    data = json.loads(r.stdout)
-    for pane in data.get('panes', []):
-        for ref, uid in zip(pane.get('surface_refs', []),
-                            pane.get('surface_ids', [])):
-            print(ref + '=' + uid)
-except Exception:
-    pass
-" 2>/dev/null || true)
-  fi
-
-  # Build team UUID set from registry refs (used to filter notification data).
-  local _st_team_uuids=""
-  if [ -n "$_ST_UUID_MAP" ]; then
-    while IFS= read -r row; do
-      [ -z "$row" ] && continue
-      local _lay _ref _uid
-      _lay=$(awk '{print $3}' <<<"$row")
-      [ "$_lay" = dash ] && continue
-      _ref=$(awk '{print $2}' <<<"$row")
-      _uid=$(awk -F'=' -v r="$_ref" '$1==r {print $2; exit}' <<<"$_ST_UUID_MAP" 2>/dev/null || true)
-      [ -n "$_uid" ] && _st_team_uuids="$_st_team_uuids $_uid"
-    done < "$reg"
-    _st_team_uuids="${_st_team_uuids# }"
-  fi
-
-  # Fetch notifications for WAITING state detection.
-  # Privacy: filter to team surface UUIDs only; never emit body.
-  # Stale-state: keep NEWEST notification per surface (by created_at), regardless
-  # of read state, so a stale "waiting" cleared by a newer "Completed" won't fire.
-  _ST_NOTIF_DATA=
+  # One python3 process asks cmux everything a refresh needs, concurrently: list-panes
+  # (surface ref -> UUID), list-notifications (newest per team surface) and one identify per
+  # teammate surface. _st_row reads the answers instead of forking `cmux identify` per row.
+  _ST_UUID_MAP='' _ST_NOTIF_DATA='' _ST_IDENT=''
   if command -v cmux >/dev/null && command -v python3 >/dev/null; then
-    _ST_NOTIF_DATA=$(export _ST_TEAM_UUIDS="$_st_team_uuids"; python3 -c "
-import json, subprocess, sys, os
-team_uuids = set(os.environ.get('_ST_TEAM_UUIDS', '').split())
-try:
-    r = subprocess.run(['cmux', 'list-notifications', '--json'],
-                      capture_output=True, text=True, timeout=5)
-    newest = {}  # surface_id -> newest notification dict
-    for n in json.loads(r.stdout):
-        sid = n.get('surface_id', '')
-        if not sid:
-            continue
-        if team_uuids and sid not in team_uuids:
-            continue  # filter to team surfaces only
-        ts = n.get('created_at', '')
-        if sid not in newest or ts > newest[sid].get('created_at', ''):
-            newest[sid] = n
-    for sid, n in newest.items():
-        # Replace | in title/subtitle to keep pipe-split safe; never emit body
-        title = n.get('title', '').replace('|', ' ')
-        subtitle = n.get('subtitle', '').replace('|', ' ')
-        print(sid + '|' + title + '|' + subtitle)
-except Exception:
-    pass
-" 2>/dev/null || true)
+    local _k _v
+    while IFS=$'\t' read -r _k _v; do
+      case $_k in
+        U) _ST_UUID_MAP+="$_v"$'\n' ;;
+        N) _ST_NOTIF_DATA+="$_v"$'\n' ;;
+        I) _ST_IDENT+="$_v"$'\n' ;;
+      esac
+    done < <(python3 -I -c "$_ST_PROBE_PY" "$reg" 2>/dev/null || true)
+    _ST_UUID_MAP=${_ST_UUID_MAP%$'\n'} _ST_NOTIF_DATA=${_ST_NOTIF_DATA%$'\n'} _ST_IDENT=${_ST_IDENT%$'\n'}
   fi
 
   _ST_MODELS=$(_team_models 2>/dev/null || true)
@@ -564,7 +522,83 @@ except Exception:
 # With `json <registry>` after <run-dir> <team> it prints one JSON document instead (the
 # `status --json` contract the TUI monitor reads): the same summary, plus every teammate
 # joined with its registry row and every parsed task. One parser for tasks.md, two outputs.
+# With `both` instead of `json` it prints the @summary record first, then the document
+# (status --json --sync: one run feeds the sidebar and the JSON).
 # ---------------------------------------------------------------------------
+# _ST_PROBE_PY <registry>: the cmux facts one refresh needs, in one process, calls run
+# concurrently. Prints TAB-separated lines:
+#   U  <ref>=<uuid>            list-panes (only with CMUX_WORKSPACE_ID)
+#   N  <uuid>|<title>|<sub>    newest notification per surface, team surfaces only once the
+#                              UUID map is known; '|' replaced, never the body (privacy)
+#   I  <ref> <alive> <pane>    cmux identify: alive 1/0/- (- = unknown), pane ref, gone or -
+read -r -d '' _ST_PROBE_PY <<'PY' || true
+import json, os, re, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
+
+def run(*args):
+    try:
+        r = subprocess.run(['cmux', *args], capture_output=True, text=True, timeout=5)
+        return r.returncode, r.stdout, r.stderr
+    except Exception:
+        return None, '', ''
+
+refs = []
+try:
+    for l in open(sys.argv[1], encoding='utf-8', errors='replace'):
+        c = l.split()
+        # finished rows are never probed (_st_row skips liveness once finished)
+        if len(c) >= 4 and c[0] == 'cmux' and c[2] != 'dash' and (len(c) < 9 or c[8] != 'finished') and c[1] not in refs:
+            refs.append(c[1])
+except OSError:
+    pass
+ws = os.environ.get('CMUX_WORKSPACE_ID', '')
+
+def ident(ref):
+    rc, out, err = run('identify', '--surface', ref)
+    if rc is None:
+        return '-', '-'
+    if rc != 0:
+        return ('0' if 'not_found' in out + err else '-'), '-'
+    # Same reading as _st_row's fallback: an object without a pane_ref is a gone surface,
+    # a null caller is unknown (as _alive treats it).
+    m = re.search(r'"caller"\s*:\s*(\{[^}]*\})', out + err)
+    if not m:
+        return '-', '-'
+    p = re.search(r'"pane_ref"\s*:\s*"([^"]+)"', m.group(1))
+    return ('1', p.group(1)) if p else ('0', 'gone')
+
+with ThreadPoolExecutor(max_workers=8) as ex:
+    panes = ex.submit(run, 'list-panes', '--workspace', ws, '--json') if ws else None
+    notifs = ex.submit(run, 'list-notifications', '--json')
+    ids = {r: ex.submit(ident, r) for r in refs}
+
+umap = {}
+if panes:
+    try:
+        for pane in json.loads(panes.result()[1]).get('panes', []):
+            for ref, uid in zip(pane.get('surface_refs', []), pane.get('surface_ids', [])):
+                umap[ref] = uid
+                print('U\t' + ref + '=' + uid)
+    except Exception:
+        pass
+team = {umap[r] for r in refs if r in umap}
+try:
+    newest = {}   # newest per surface whatever its read state, so a newer "Completed" clears a stale question
+    for n in json.loads(notifs.result()[1]):
+        sid = n.get('surface_id', '')
+        if not sid or (team and sid not in team):
+            continue
+        if sid not in newest or n.get('created_at', '') > newest[sid].get('created_at', ''):
+            newest[sid] = n
+    for sid, n in newest.items():
+        print('N\t' + sid + '|' + n.get('title', '').replace('|', ' ') + '|' + n.get('subtitle', '').replace('|', ' '))
+except Exception:
+    pass
+for r, f in ids.items():
+    a, pp = f.result()
+    print('I\t' + r + ' ' + a + ' ' + pp)
+PY
+
 read -r -d '' _ST_SUMMARY_PY <<'PY' || true
 import glob, json, os, re, sys, time
 run = sys.argv[1]
@@ -639,7 +673,8 @@ for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
         pass
 if mode != 'json':
     print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
-    sys.exit(0)
+    if mode != 'both':
+        sys.exit(0)
 
 # ---- json: the status --json contract (version 1). Keys are only ever added. ----
 reg = sys.argv[4]
@@ -729,8 +764,8 @@ print(json.dumps(dict(
     prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
-# _st_json <run-dir> <registry> <team>: teammate records on stdin -> the status --json document
-_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" json "$2"; }
+# _st_json <run-dir> <registry> <team> [json|both]: teammate records on stdin -> the status --json document
+_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" "${4:-json}" "$2"; }
 
 # ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
@@ -1150,7 +1185,11 @@ sub_status() {
     local run recs; run=$(_st_run_of "$team")
     recs=$(_st_collect "$team" --records) || return 3
     if [ -n "$sync" ]; then
-      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null)" || true
+      # One process for both: the @summary record (first line) feeds the sidebar, the rest is the document.
+      local out; out=$(printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team" both)
+      _st_sync_apply "$team" "$recs"$'\n'"${out%%$'\n'*}" || true
+      printf '%s\n' "${out#*$'\n'}"
+      return 0
     fi
     printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team"
     return 0
@@ -1421,6 +1460,9 @@ sub_sync() {
 # _st_sync_apply <team> <records>: pill + progress + transition log from _st_records
 # output. Read-only towards teammates (decision 28): it only writes the sidebar and
 # its own .sync state file, because the monitor pane and the lead both run it.
+# _st_frac <num> <den>: num/den as 0.00-1.00 (two decimals, rounded half up), no fork.
+_st_frac() { local h=$(( ($1 * 200 + $2) / ($2 * 2) )); printf '%d.%02d' $((h / 100)) $((h % 100)); }
+
 _st_sync_apply() {
   local team=$1 recs=$2
   command -v cmux >/dev/null 2>&1 || return 0
@@ -1468,10 +1510,10 @@ _st_sync_apply() {
   if [ "$selfn" -gt 0 ] && [ "$pctn" -gt 0 ]; then
     avg=$((pctsum / pctn))
   fi
-  if [ -n "$avg" ] && command -v python3 >/dev/null 2>&1; then
-    frac=$(python3 -c "print(f'{$avg/100:.2f}')" 2>/dev/null) || frac="0.0"
-  elif [ "$total" -gt 0 ] && command -v python3 >/dev/null 2>&1; then
-    frac=$(python3 -c "print(f'{$reported/$total:.2f}')" 2>/dev/null) || frac="0.0"
+  if [ -n "$avg" ]; then
+    frac=$(_st_frac "$avg" 100)
+  elif [ "$total" -gt 0 ]; then
+    frac=$(_st_frac "$reported" "$total")
   fi
 
   # '~' marks the average as self-reported; the hard N/M fact stays alongside it.
@@ -1481,7 +1523,7 @@ _st_sync_apply() {
   if [ "${s_total:-0}" -gt 0 ] 2>/dev/null && [ "$s_pct" -ge 0 ] 2>/dev/null; then
     local t=; [ "$s_est" = 1 ] && t='~'
     pill="$phase · $t$s_pct% · $s_done/$s_total tasks"
-    frac=$(python3 -c "print(f'{$s_pct/100:.2f}')" 2>/dev/null) || frac="0.0"
+    frac=$(_st_frac "$s_pct" 100)
   fi
 
   # Update sidebar (never fatal; use per-team key and explicit workspace)
