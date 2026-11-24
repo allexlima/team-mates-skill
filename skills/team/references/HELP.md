@@ -243,6 +243,10 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
                  in 10 minutes and no tool still running. This is "no update in a while",
                  not "stuck": a subagent wait looks the same, so look at its pane before
                  messaging it
+    gating       Inside a no-mistakes gate: the last line of its status file has `gating <sha>`
+                 (7-40 lowercase hex), and its report is not on disk yet. It beats idle and
+                 loses to permission, waiting and stalled?. A gate runs about 30 minutes, mostly
+                 silent waits, so stalled? applies only after 45 minutes of silence instead of 10
     working      Doing its work (a note says "report on disk" once it has reported)
     idle         Turn ended with no report yet (a Stop, idle prompt or SessionEnd in the event
                  log, or without a log cmux's "Completed" notification); routine while it waits
@@ -258,7 +262,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
   shim injects — no screen scraping. The log is `.team/runs/<run>/events/<role>.jsonl`;
   `status --json` carries the measured state per teammate as
   `event_state`, `event_age_s` (seconds since its last event) and `open_tool` (a tool
-  still running), all null without a log. A finished teammate has no surface, so its state comes from the report on disk
+  still running), all null without a log. A teammate in the gating state also carries `gate_sha` (null otherwise). A finished teammate has no surface, so its state comes from the report on disk
   and its registry row.
   The status pane opens automatically (unless `--no-monitor`) and repaints only when the
   frame changes, checking every 30 s (override with `TEAM_STATUS_INTERVAL`). It exits when

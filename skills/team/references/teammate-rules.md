@@ -43,6 +43,10 @@ the slowest teammate sets the pace for the whole team.
   current step is nearly done. Judge it against the task named by the id, and start again
   from a low % when the lead hands you the next task. Use 100% only once that task's report
   section is written.
+- **Mark the gate in your status file.** Right before `no-mistakes axi run`, write
+  `T<n>: gating <short-sha> · NN%` (the sha of the commit you are gating). The monitor then
+  shows you as `gating`, not `stalled?`, during the gate's long silent waits. When the gate
+  ends, write a normal status line again.
 - **Do web frontend / UI QA, review, and tests in Google Chrome through the Chrome DevTools
   MCP** (`mcp__plugin_chrome-devtools-mcp_chrome-devtools__*`). Never use the cmux browser,
   Playwright, or any other browser, even if one looks quicker.
