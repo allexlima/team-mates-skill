@@ -12,9 +12,16 @@ Open items. Each one names where the work lives.
 
 ## Monitor
 
-- [ ] `tests/status-render.sh` AC2 ("no self-close on transition") timed out when the gate's test
-      step ran it inside a no-mistakes worktree, and passed in a normal checkout. Cause not found
-      (reported by tm2-tui, not reproduced here). Run the suite from a worktree the gate created.
+- [ ] `tests/status-render.sh` AC2 ("no self-close on transition") timed out once when the gate's
+      test step ran it inside a no-mistakes worktree. Still not reproduced (run w12, 2026-11-24):
+      7 of 7 full-suite passes, including one under a live gate's load (69 s), one with no cmux env,
+      no `TERM` and stdin from `/dev/null`, one under `env -i` with `PATH=/usr/bin:/bin` (stock
+      bash 3.2, perl fallback for `tmo`), and 4 suites in parallel at load average 12. The gate's
+      test step has no test command configured ("no test command configured, asking agent to run
+      tests..." in `no-mistakes axi logs --step test`), so an agent picks the commands and runs
+      them inside its own tool-call time limit; the reported "timeout" may be that limit, not the
+      test's own `tmo`. Next step: when it recurs, read that step's log for the exact command and
+      its exit code (124 from `tmo` vs a tool timeout).
 
 - [ ] `tests/status-render.sh` AQ1 ("q in the tty monitor exits 0") hung once in four runs during a
       busy full gate run (tm2-hooks): the pty driver saw no exit after 60 rounds of `q`. Not
@@ -32,11 +39,6 @@ Reported by tm2-tui (branch `feat/tui-monitor`); not re-measured here.
 - [ ] Mouse clicks in the TUI monitor under cmux are unverified. cmux `send-key`/`send` cannot
       synthesize clicks, so a person has to click a card in a real cmux pane: a click should focus,
       a double-click should open details, and cmux should not take the click first.
-- [ ] Poll cost: `team.sh status --json --sync` with 7 live teammates under real cmux took
-      4.7-6.7s before and 2.1-2.8s after the fork cuts (03933ef). That is fine at the default 5s
-      interval; the 1.5s target is deferred. What is left is three python starts (list-panes,
-      list-notifications, summary) plus one cmux `identify` per teammate. Next step: one python
-      process doing identify, notifications and summary.
 - [ ] Check the transcript path and fields the TUI reads against a current Claude Code release
       (`~/.claude/projects/*/<session-id>.jsonl`, `message.usage`, `tool_use`/`tool_result`):
       they are not a documented interface.

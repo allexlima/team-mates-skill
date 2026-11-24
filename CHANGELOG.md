@@ -14,6 +14,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- `status --json --sync` polls faster: one python probe runs the cmux
+  `list-panes`, `list-notifications` and each live teammate's `identify`
+  concurrently, and one summary run feeds both the sidebar and the JSON. The
+  median under real cmux with this team live went from 1.50 s to 1.11 s.
 - The repo is clean under `shellcheck -S warning` (SC1007 included), and CI now
   enforces that level on both runners, up from `-S error`.
 - The lead asks the user every question (role pulls, lessons, merges, the
