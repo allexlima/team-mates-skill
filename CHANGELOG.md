@@ -16,6 +16,10 @@ All notable changes to this project are recorded here. The format follows
 
 - The lead asks the user every question (role pulls, lessons, merges, the
   build-run OK) through AskUserQuestion.
+- `team.sh status` polls are cheaper: one python process asks cmux for panes,
+  notifications and every teammate's surface concurrently, and `--json --sync`
+  runs the summary once for both the sidebar and the JSON. `status --json`
+  output is unchanged.
 
 ### Fixed
 
