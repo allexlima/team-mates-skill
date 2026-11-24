@@ -20,6 +20,7 @@ All notable changes to this project are recorded here. The format follows
   notifications and every teammate's surface concurrently, and `--json --sync`
   runs the summary once for both the sidebar and the JSON. `status --json`
   output is unchanged.
+- CI's `shellcheck` step now fails on warnings, not only errors.
 
 ### Fixed
 
