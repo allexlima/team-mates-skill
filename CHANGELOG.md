@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `team.sh close` removes the team's `.sync` sidecar once every row is closed,
+  so a tmux team no longer leaks it, and `close` and `clean` also remove a
+  dropped teammate's unrun launcher files.
+
 ## [0.2.0] - 2026-11-19
 
 ### Added

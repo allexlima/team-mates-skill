@@ -1318,6 +1318,20 @@ _disallow_of() {
   [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] && [ -f "$D/team-$T-bar-x.scratch/keep" ] \
     && pass "T28b: close removes the files of the rows it drops, only those" \
     || fail "T28b: close removes the files of the rows it drops, only those" "$(ls -d "$D"/*"$T"*)"
+  # Sidecars: a finished row's unrun launcher goes with its other files (clean and close); close
+  # also drops the team's .sync state (even with no cmux sidebar to clear), never a prefixed team's.
+  touch "$D/team-$T-a.launch.AbC123" "$D/team-$T.sync" "$D/team-$T-bar.sync" "$D/team-$T-bar-y.launch.XyZ789"
+  mkdir -p "$D/team-$T-a.scratch"; touch "$D/team-$T-a.sysprompt.md"
+  printf 'cmux surface:6 pane %s - - - %s finished - %s\n' "$T-a" "$R" "$R" > "$D/team-$T.tabs"
+  (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-a.launch.AbC123" ] && [ -e "$D/team-$T-bar-y.launch.XyZ789" ] \
+    && pass "T28b: clean removes a finished teammate's launcher, not a prefixed team's" \
+    || fail "T28b: clean removes a finished teammate's launcher" "$(ls -d "$D"/*"$T"*)"
+  touch "$D/team-$T-a.launch.AbC123"
+  (cd "$R" && bash "$TEAM_SH" close "$T") >/dev/null 2>&1 || true
+  [ ! -e "$D/team-$T-a.launch.AbC123" ] && [ ! -e "$D/team-$T.sync" ] && [ -e "$D/team-$T-bar.sync" ] \
+    && pass "T28b: close removes the team's launchers and .sync, not a prefixed team's" \
+    || fail "T28b: close removes the team's launchers and .sync" "$(ls -d "$D"/*"$T"*)"
   # Worktrees too: clean foo (registry already gone after close) keeps foo-bar's clean worktree.
   _git -C "$R" worktree add -q -b "team/$T-a" "$R/.team/worktrees/$T-a" HEAD
   _git -C "$R" worktree add -q -b "team/$T-bar-x" "$R/.team/worktrees/$T-bar-x" HEAD
