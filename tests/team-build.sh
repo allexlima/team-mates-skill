@@ -775,7 +775,7 @@ JSON
   pf="$R/p.md"; printf 'prompt\n' > "$pf"
   TM="rv1d$$"
   _reset_logs
-  out=$(cd "$R" && CMUX_WORKSPACE_ID= CMUX_SURFACE_ID= \
+  out=$(cd "$R" && CMUX_WORKSPACE_ID='' CMUX_SURFACE_ID='' \
     bash "$TEAM_SH" spawn "$TM" worker "$pf" sonnet 2>&1) && rc=0 || rc=$?
   [ "$rc" = 3 ] && [[ "$out" == *"cmux pane"* || "$out" == *"CMUX_WORKSPACE"* || "$out" == *"cmux"* ]] \
     && pass "rev4-1d: spawn outside cmux pane (no CMUX_WORKSPACE_ID) → exit 3" \
@@ -787,7 +787,7 @@ JSON
   R="$W/rv1e"; _mkgit "$R"
   # Remove cmux entirely for this test
   mv "$W/bin/cmux" "$W/bin/cmux.bak"
-  out=$(cd "$R" && CMUX_WORKSPACE_ID= CMUX_SURFACE_ID= \
+  out=$(cd "$R" && CMUX_WORKSPACE_ID='' CMUX_SURFACE_ID='' \
     bash "$TEAM_SH" init myteam 2>&1) && rc=0 || rc=$?
   mv "$W/bin/cmux.bak" "$W/bin/cmux"
   [ "$rc" = 0 ] \
@@ -1184,7 +1184,7 @@ _disallow_of() {
   pf="$RUNP/prompts/b.md"; printf 'prompt\n' > "$pf"
   TM="permw$$"; _reset_logs
   (cd "$R" && bash "$TEAM_SH" spawn --worktree "$TM" b "$pf" sonnet) >/dev/null 2>&1 || true
-  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss= bad=
+  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss='' bad=''
   for p in "$wt" "$(cd "$wt" 2>/dev/null && pwd -P)"; do
     case ",$a," in *",Edit(/$p/**),"*) ;; *) miss+=" Edit(/$p/**)" ;; esac
   done
@@ -1290,7 +1290,7 @@ _disallow_of() {
   (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
   [ ! -e "$D/team-$T-gone.scratch" ] && [ ! -e "$D/team-$T-gone.sysprompt.md" ] \
     && pass "T28b: clean removes a finished teammate's scratch and sysprompt" \
-    || fail "T28b: clean removes a finished teammate's scratch and sysprompt" "$(ls "$D" | grep "$T")"
+    || fail "T28b: clean removes a finished teammate's scratch and sysprompt" "$(ls -d "$D"/*"$T"*)"
   [ -d "$D/team-$T-live.scratch" ] && [ -f "$D/team-$T-live.sysprompt.md" ] \
     && pass "T28b: clean keeps a live teammate's scratch and sysprompt" \
     || fail "T28b: clean keeps a live teammate's scratch and sysprompt"
@@ -1308,7 +1308,7 @@ _disallow_of() {
   [ -f "$D/team-$T-bar-x.scratch/keep" ] && [ -f "$D/team-$T-bar-x.sysprompt.md" ] \
     && [ -d "$D/team-$T-bar-y.scratch" ] && [ -f "$D/team-$T-bar-y.sysprompt.md" ] \
     && pass "T28b: clean leaves a prefixed team's files" \
-    || fail "T28b: clean leaves a prefixed team's files" "$(ls "$D" | grep "$T")"
+    || fail "T28b: clean leaves a prefixed team's files" "$(ls -d "$D"/*"$T"*)"
   [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] \
     && pass "T28b: clean removes its own finished teammate's files" \
     || fail "T28b: clean removes its own finished teammate's files"
@@ -1317,7 +1317,7 @@ _disallow_of() {
   (cd "$R" && bash "$TEAM_SH" close "$T") >/dev/null 2>&1 || true
   [ ! -e "$D/team-$T-a.scratch" ] && [ ! -e "$D/team-$T-a.sysprompt.md" ] && [ -f "$D/team-$T-bar-x.scratch/keep" ] \
     && pass "T28b: close removes the files of the rows it drops, only those" \
-    || fail "T28b: close removes the files of the rows it drops, only those" "$(ls "$D" | grep "$T")"
+    || fail "T28b: close removes the files of the rows it drops, only those" "$(ls -d "$D"/*"$T"*)"
   # Worktrees too: clean foo (registry already gone after close) keeps foo-bar's clean worktree.
   _git -C "$R" worktree add -q -b "team/$T-a" "$R/.team/worktrees/$T-a" HEAD
   _git -C "$R" worktree add -q -b "team/$T-bar-x" "$R/.team/worktrees/$T-bar-x" HEAD
@@ -1325,7 +1325,7 @@ _disallow_of() {
   (cd "$R" && bash "$TEAM_SH" clean "$T") >/dev/null 2>&1 || true
   [ ! -e "$R/.team/worktrees/$T-a" ] && [ -d "$R/.team/worktrees/$T-bar-x" ] \
     && pass "T28b: clean removes its own worktree, not a prefixed team's" \
-    || fail "T28b: clean removes its own worktree, not a prefixed team's" "$(ls "$R/.team/worktrees" | grep "$T")"
+    || fail "T28b: clean removes its own worktree, not a prefixed team's" "$(ls -d "$R"/.team/worktrees/*"$T"*)"
   _git -C "$R" worktree remove --force "$R/.team/worktrees/$T-bar-x" 2>/dev/null || true
   rm -rf "$D/team-$T"*
 }
