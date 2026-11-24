@@ -240,7 +240,7 @@ A bad dir (not a real directory you own with mode 700, or a symlink) exits 3 wit
     model gone   Its model is no longer available — respawn with a different model
     dead         Session exited — respawn it (a note says when its report is safe on disk)
     stalled?     No status update in 10 minutes while mid-work; with an event log, no event
-                 in 10 minutes and no tool still running. This is "no update in a while",
+                 in 10 minutes and no tool still running (45 minutes while `gating`). This is "no update in a while",
                  not "stuck": a subagent wait looks the same, so look at its pane before
                  messaging it
     gating       Inside a no-mistakes gate: the last line of its status file has `gating <sha>`
