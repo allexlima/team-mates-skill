@@ -19,8 +19,10 @@ All notable changes to this project are recorded here. The format follows
 - `team.sh status` polls are cheaper: one python process asks cmux for panes,
   notifications and every teammate's surface concurrently, and `--json --sync`
   runs the summary once for both the sidebar and the JSON. `status --json`
-  output is unchanged.
-- CI's `shellcheck` step now fails on warnings, not only errors.
+  output is unchanged. The median under real cmux with a live team went from
+  1.50 s to 1.11 s.
+- CI's `shellcheck` step now fails on warnings, not only errors, and the repo is
+  clean at that level (SC1007 included).
 
 ### Fixed
 
