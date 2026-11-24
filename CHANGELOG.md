@@ -6,10 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
 ### Added
 
 - A `gating` monitor state for a teammate inside a no-mistakes gate: its
-  status line ends in `gating <sha>`, `status --json` carries `gate_sha`, and
+  status line has `gating <sha>`, `status --json` carries `gate_sha`, and
   it turns `stalled?` only after 45 silent minutes instead of 10.
 
 ### Changed
@@ -161,6 +163,7 @@ then this release's fixes and the new contributor flow.
 - Tool-list flags are passed as `--flag=value`, so a variadic flag can no
   longer swallow the prompt.
 
-[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/allexlima/team-mates-skill/releases/tag/v0.1.1
