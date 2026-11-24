@@ -522,6 +522,8 @@ _st_records() {
 # With `json <registry>` after <run-dir> <team> it prints one JSON document instead (the
 # `status --json` contract the TUI monitor reads): the same summary, plus every teammate
 # joined with its registry row and every parsed task. One parser for tasks.md, two outputs.
+# With `both` instead of `json` it prints the @summary record first, then the document
+# (status --json --sync: one run feeds the sidebar and the JSON).
 # ---------------------------------------------------------------------------
 # _ST_PROBE_PY <registry>: the cmux facts one refresh needs, in one process, calls run
 # concurrently. Prints TAB-separated lines:
@@ -762,7 +764,7 @@ print(json.dumps(dict(
     prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
-# _st_json <run-dir> <registry> <team>: teammate records on stdin -> the status --json document
+# _st_json <run-dir> <registry> <team> [json|both]: teammate records on stdin -> the status --json document
 _st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" "${4:-json}" "$2"; }
 
 # ---------------------------------------------------------------------------
