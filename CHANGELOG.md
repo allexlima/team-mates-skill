@@ -14,6 +14,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- The repo is clean under `shellcheck -S warning` (SC1007 included), and CI now
+  enforces that level on both runners, up from `-S error`.
 - The lead asks the user every question (role pulls, lessons, merges, the
   build-run OK) through AskUserQuestion.
 - `team.sh status` polls are cheaper: one python process asks cmux for panes,
