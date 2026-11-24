@@ -35,6 +35,7 @@ case "$1" in
   --version) echo "cmux 0.65.0 (1) stub" ;;
   identify)
     surf=""; prev=""; for a; do [ "$prev" = "--surface" ] && surf="$a"; prev="$a"; done
+    [ -n "${CMUX_CALLS:-}" ] && echo "identify $surf" >> "$CMUX_CALLS"
     case " ${CMUX_NULL_REFS:-} " in *" $surf "*) echo '{"caller":null}'; exit 0 ;; esac
     case " ${CMUX_GONE_REFS:-} " in
       *" $surf "*) echo '{"caller":{"pane_ref":null}}' ;;
@@ -119,6 +120,20 @@ jpct=$(cd "$G" && bash "$TEAM_SH" status --json j2 2>/dev/null | python3 -I -c '
 st=$(cd "$G" && CMUX_NULL_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev/null \
   | python3 -I -c 'import json,sys; m={t["title"]: t["state"] for t in json.load(sys.stdin)["teammates"]}; print(m["j1-ui"])')
 [ "$st" = UNKNOWN ] && pass "J5: a null caller leaves the row UNKNOWN, matching _alive" || fail "J5: null caller" "$st"
+
+# ═══ J7 — one refresh asks cmux identify once per teammate surface (the probe), not again per row ═══
+CMUX_CALLS="$W/calls"; : > "$CMUX_CALLS"
+(cd "$G" && CMUX_CALLS="$CMUX_CALLS" bash "$TEAM_SH" status --json j1 >/dev/null 2>&1)
+got=$(grep 'surface:' "$CMUX_CALLS" | sort | uniq -c | awk '{print $1 "x" $3}' | tr '\n' ' ')
+[ "$got" = "1xsurface:3 1xsurface:4 " ] && pass "J7: status --json identifies each live teammate surface exactly once per refresh (finished ones not at all)" \
+  || fail "J7: identify calls per refresh" "$got"
+
+# ═══ J6 — a `gating <sha>` status line is state GATING with gate_sha, end to end through team.sh ═══
+printf 'T3: gating 9f8e7d6 · 90%%\n' > "$RUN/status/ui.txt"
+st=$(cd "$G" && bash "$TEAM_SH" status --json j1 2>/dev/null \
+  | python3 -I -c 'import json,sys; m={t["title"]: t for t in json.load(sys.stdin)["teammates"]}["j1-ui"]; print(m["state"], m["gate_sha"])')
+printf 'T3: load test · 10%%\n' > "$RUN/status/ui.txt"
+[ "$st" = "GATING 9f8e7d6" ] && pass "J6: status --json reports GATING and gate_sha for a teammate inside a gate" || fail "J6: gating state" "$st"
 
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
 frame=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)

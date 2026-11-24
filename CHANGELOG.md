@@ -6,6 +6,32 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
+### Added
+
+- A `gating` monitor state for a teammate inside a no-mistakes gate: its
+  status line has `gating <sha>`, `status --json` carries `gate_sha`, and
+  it turns `stalled?` only after 45 silent minutes instead of 10.
+
+### Changed
+
+- The lead asks the user every question (role pulls, lessons, merges, the
+  build-run OK) through AskUserQuestion.
+- `team.sh status` polls are cheaper: one python process asks cmux for panes,
+  notifications and every teammate's surface concurrently, and `--json --sync`
+  runs the summary once for both the sidebar and the JSON. `status --json`
+  output is unchanged. The median under real cmux with a live team went from
+  1.50 s to 1.11 s.
+- CI's `shellcheck` step now fails on warnings, not only errors, and the repo is
+  clean at that level (SC1007 included).
+
+### Fixed
+
+- `team.sh close` removes the team's `.sync` sidecar once every row is closed,
+  so a tmux team no longer leaks it, and `close` and `clean` also remove a
+  dropped teammate's unrun launcher files.
+
 ## [0.2.0] - 2026-11-19
 
 ### Added
@@ -137,6 +163,7 @@ then this release's fixes and the new contributor flow.
 - Tool-list flags are passed as `--flag=value`, so a variadic flag can no
   longer swallow the prompt.
 
-[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/allexlima/team-mates-skill/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/allexlima/team-mates-skill/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/allexlima/team-mates-skill/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/allexlima/team-mates-skill/releases/tag/v0.1.1

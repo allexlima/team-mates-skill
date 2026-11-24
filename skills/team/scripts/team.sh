@@ -7,7 +7,8 @@
 #                         is recorded or its dir is gone (then spawn without --resume)
 #   team.sh close <team>  -> force-closes every recorded pane/tab (incl. the monitor) whose live title still matches
 #                            its row (a reused ref is skipped, row dropped) and drops finished rows (the team is over);
-#                            each dropped row's scratch dir and system prompt in the registry dir go with it;
+#                            each dropped row's scratch dir, system prompt and unrun launcher in the registry dir go with it,
+#                            and, once every row is closed, the team's .sync sidecar (close owns team-level state);
 #                            exit 1 (rows kept for a retry) if one could not be closed
 #   team.sh init <team>   -> creates .team/ (idempotent) + a run dir; prints the run dir path
 #   team.sh lead-title    -> renames the lead's cmux workspace and tab to "Main Board - <project>"
@@ -22,7 +23,7 @@
 #                            exit 1 if one could not be closed
 #   team.sh gate-init     -> sets up the no-mistakes gate for this repo (needs an "origin" remote)
 #   team.sh clean <team>  -> removes the team's worktrees that have no uncommitted changes (branches kept),
-#                            and its finished teammates' scratch dirs and system prompts in the registry dir
+#                            and its finished teammates' scratch dirs, system prompts and unrun launchers in the registry dir
 #   team.sh finish <team> <role> -> after the lead received a teammate's report: mark its row finished (session id
 #                                  and cwd kept), then close its pane. exit 2 refused, nothing changed: the report did
 #                                  not grow since spawn or gained no new PARALLELISM: line, tasks.md lacks
@@ -388,7 +389,7 @@ _finished() { [ "$(awk '{print $9}' <<<"$1")" = finished ]; }
 # (team slugs prefix each other, so never by glob). A symlink planted there is left alone.
 _rm_mate_files() {
   local f
-  for f in "$(_reg_dir)/team-$1.scratch" "$(_reg_dir)/team-$1.sysprompt.md"; do
+  for f in "$(_reg_dir)/team-$1.scratch" "$(_reg_dir)/team-$1.sysprompt.md" "$(_reg_dir)"/team-"$1".launch.*; do
     [ -e "$f" ] && [ ! -L "$f" ] || continue
     rm -rf -- "$f" && echo "removed $f"
   done
@@ -468,8 +469,8 @@ _reg_prune() {
 # lock whose holder pid is dead is broken, a live one is waited on for up to 30s, then exit 4.
 # Released on exit via an EXIT trap, which replaces any earlier EXIT trap: call once per process.
 _lock() {
-  local lock="$1.lock" i holder
-  for i in $(seq 1 300); do
+  local lock="$1.lock" holder
+  for _ in $(seq 1 300); do
     if mkdir "$lock" 2>/dev/null; then echo $$ > "$lock/pid"; trap 'rm -rf "'"$lock"'"' EXIT; return 0; fi
     holder=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$lock"; continue; fi
@@ -562,7 +563,7 @@ fi
 # closed. Only a live surface whose title still matches its row counts (refs get reused), and the
 # caller's own surface is never a candidate. --yes closes them under each registry's lock.
 if [ "$sub" = reap ]; then
-  yes= excl=
+  yes='' excl=''
   while [ $# -gt 0 ]; do case $1 in
     --yes) yes=1; shift ;;
     --exclude) excl=${2:?--exclude <team>}; shift 2 ;;
@@ -586,7 +587,7 @@ if [ "$sub" = reap ]; then
       [ "$(_row_root "${rd:-}" "${rt:-}")" = "$me" ] || ours=
     done < "$reg"
     [ "$any" = 1 ] || continue
-    keep="" failed= held=
+    keep="" failed='' held=''
     while IFS= read -r row; do
       read -r b r _ title _ _ rd rt _ <<<"$row" || true
       [ -n "${r:-}" ] || continue
@@ -685,7 +686,9 @@ if [ "$sub" = close ]; then
   done < "$reg"
   # Clear the lead sidebar pill/progress for this team (lib/status.sh); best-effort.
   if declare -F sub_sync >/dev/null; then sub_sync --clear "$team" || true; fi
-  [ -z "$keep" ] && { rm -f "$reg"; exit 0; }
+  # The team's .sync sidecar goes with its registry: sub_sync --clear only removes it when a cmux
+  # sidebar exists, so a tmux team (or none) would leak it. close owns it: it ends the team.
+  [ -z "$keep" ] && { rm -f "$reg" "$(_reg_dir)/team-$team.sync"; exit 0; }
   printf '%s' "$keep" > "$reg"; exit 1
 fi
 
@@ -926,7 +929,7 @@ if [ "$sub" = show ] || [ "$sub" = list ]; then
   exit 0
 fi
 
-layout=pane worktree= caveman=1 replace= resume= branch=
+layout=pane worktree='' caveman=1 replace='' resume='' branch=''
 while :; do case ${1:-} in
   --resume) resume=1; shift ;;
   --tmux) export TEAM_MUX=tmux; shift ;;

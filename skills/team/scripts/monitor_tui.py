@@ -47,6 +47,7 @@ STATES = {"PERMISSION":  ("⊘", "permission",  "alert"),
           "DEAD":        ("✗", "dead",        "alert"),
           "STALLED":     ("⧗", "stalled?",    "alert"),
           "WORKING":     ("◐", "working",     "active"),
+          "GATING":      ("⧖", "gating",      "active"),
           "IDLE":        ("◌", "idle",        "dim"),
           "UNKNOWN":     ("?", "unknown",     "dim"),
           "FINISHED":    ("✓", "finished",    "done")}
@@ -184,7 +185,7 @@ class History:
                     self._event(now, "success", f"✓ {tid} done ({owner_of.get(tid, '?')})", new)
         for m in doc.get("teammates", []):
             title, tid, pct = m["title"], m.get("task"), m.get("pct")
-            started = m["state"] == "WORKING" or pct is not None
+            started = m["state"] in ("WORKING", "GATING") or pct is not None
             if tid in tasks and not tasks[tid]["done"] and tid not in self.task_start and started:
                 # Attached mid-task: `elapsed_min` counts from the teammate's spawn, so it is this
                 # task's age only for a teammate on its first task. Otherwise the start is unknown.
@@ -755,6 +756,8 @@ def selftest():
            "teammates": [mate("t-a", "T1", 90), mate("t-b", "T2", 10)], "summary": {"done": 0, "elapsed_min": 10}}
     fc = forecast(doc, History(), now)
     check("F3: 'any' task scheduled after the faster teammate", fc["per_task"]["T3"] < fc["per_task"]["T2"], fc["per_task"])
+    # S1: a teammate inside a no-mistakes gate renders as gating, in the working palette
+    check("S1: GATING is a known state drawn as active", STATES.get("GATING", ("", "", ""))[1:] == ("gating", "active"))
     # F4: no signal at all -> no ETA rather than a made-up one
     doc = {"tasks": [mk("T1", "t-a")], "teammates": [mate("t-a", "T1", None)], "summary": {"done": 0, "elapsed_min": 1}}
     check("F4: no % and nothing done -> no ETA", forecast(doc, History(), now)["eta"] is None)
@@ -959,14 +962,14 @@ if HAVE_TEXTUAL:
         barw = max(8, width - label.cell_len - eta_t.cell_len - 1)
         mates = doc.get("teammates", [])
         # Nothing working (all idle, stalled, waiting or finished): the bar stops looking alive.
-        busy = any(m["state"] == "WORKING" for m in mates)
+        busy = any(m["state"] in ("WORKING", "GATING") for m in mates)
         bar = gbar(pct, barw) if busy else gbar(pct, barw, c0=PAL["dim"], c1=PAL["dim"])
         line2 = Text.assemble(bar, label, eta_t)
         n = lambda states: sum(1 for m in mates if m["state"] in states)
         alerts = len(alerts_of(view))
         tok = sum((v or {}).get("output") or 0 for v in (view.tx or {}).values())
         chips = Text()
-        chips += chip("◐", f"{n(('WORKING',))} working", PAL["active"])
+        chips += chip("◐", f"{n(('WORKING', 'GATING'))} working", PAL["active"])
         if alerts:
             chips += chip("⚠", f"{alerts} need you", PAL["alert"])
         if n(("IDLE",)):
@@ -1220,7 +1223,9 @@ if HAVE_TEXTUAL:
             s.add_column()
             for tok, (g, w, role) in STATES.items():
                 s.add_row(Text(f"{g} {w}", style=f"bold {PAL[role]}"), Text(HINT.get(tok, {
-                    "WORKING": "doing its work", "IDLE": "turn ended, no report yet (waits on a peer or you)",
+                    "WORKING": "doing its work",
+                    "GATING": "inside a no-mistakes gate (status `gating <sha>`); stalled? waits longer than the usual 10 min",
+                    "IDLE": "turn ended, no report yet (waits on a peer or you)",
                     "UNKNOWN": "state cannot be read here", "FINISHED": "reported, verified and closed"}.get(tok, "")),
                     style=PAL["dim"]))
             notes = Text("Progress and ETA are estimates: each teammate reports its own %, and the ETA "

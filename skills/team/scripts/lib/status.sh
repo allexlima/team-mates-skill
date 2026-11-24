@@ -31,6 +31,8 @@
 # Module-level state (reset by each _st_records call):
 #   _ST_UUID_MAP   "surface:N=UUID\n…" built from cmux list-panes (one python3 call)
 #   _ST_NOTIF_DATA "UUID|title|subtitle\n…" from cmux list-notifications --json
+#   _ST_IDENT      "surface:N <alive 1|0|-> <pane_ref|gone|->\n…" from one cmux identify per teammate
+#   (all three filled by one _ST_PROBE_PY process per refresh)
 #
 # FLAGS column note — WAITING covers AskUserQuestion only (title="Claude question").
 # Tool-approval permission prompts go to `cmux hooks feed`, NOT list-notifications,
@@ -40,6 +42,10 @@
 
 _ST_UUID_MAP=
 _ST_NOTIF_DATA=
+_ST_IDENT=
+# Stall limit (minutes) while a teammate is inside a no-mistakes gate: a gate runs about
+# 30 min, mostly silent waits on its review and CI, so 1.5x that before stalled?.
+_ST_GATE_STALL_MIN=45
 
 # Shared palette (decision 16): the sidebar pill and the monitor pane use the same
 # four roles. None is "#4C8DFF" — `cmux set-status --help` documents that hex as the
@@ -105,7 +111,7 @@ if ! declare -f _reg_add >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled> [<permission>]
+# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled> [<permission>] [<gating>]
 # Pure: prints exactly one state token from the detection facts _st_row gathers.
 # Flags are 1 or empty; <alive> is 1 (surface exists), 0 (gone) or empty (unknown,
 # e.g. no cmux on PATH). Decision order, first match wins:
@@ -119,14 +125,18 @@ fi
 #   WAITING     an AskUserQuestion still open in the event log; without a log, the newest
 #               notification is an AskUserQuestion ("Claude question")
 #   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
-#               measured WORKING with no event and no open tool for >=10 min
+#               measured WORKING with no event and no open tool for >=10 min. Both limits are
+#               _ST_GATE_STALL_MIN while the status file's last line says `gating <sha>`,
+#               and then a measured IDLE or ENDED past that limit is STALLED too
+#   GATING      the status file's last line says `gating <sha>`: inside a no-mistakes gate,
+#               which waits on a review or CI for long silent stretches (wins over IDLE)
 #   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
 #               or without a log the newest notification is "Completed in …" (routine while
 #               waiting on a peer; after 10 silent min it is STALLED)
 #   WORKING     everything else (including "report on disk" while still alive)
 # ---------------------------------------------------------------------------
 _st_state() {
-  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7 perm=${8:-}
+  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7 perm=${8:-} gating=${9:-}
   if [ -n "$fin" ]; then echo FINISHED
   elif { [ "$backend" != cmux ] && [ "$backend" != tmux ]; } || [ -z "$alive" ]; then echo UNKNOWN
   elif [ "$alive" != 1 ]; then echo DEAD
@@ -134,6 +144,7 @@ _st_state() {
   elif [ -n "$perm" ]; then echo PERMISSION
   elif [ -n "$waiting" ]; then echo WAITING
   elif [ -n "$stalled" ]; then echo STALLED
+  elif [ -n "$gating" ]; then echo GATING
   elif [ -n "$idle" ]; then echo IDLE
   else echo WORKING
   fi
@@ -238,7 +249,7 @@ _st_row() {
     effective_run="$rundir"
   fi
 
-  local rpt= stf=
+  local rpt='' stf=''
   if [ -n "$effective_run" ]; then
     rpt="$effective_run/reports/$role.md"
     stf="$effective_run/status/$role.txt"
@@ -290,6 +301,12 @@ _st_row() {
     pct=$((sk * 100 / sn))
   fi
 
+  # ------ GATE ("gating <sha>": the teammate is inside a no-mistakes gate) ---
+  local gate=- stall_min=10
+  if [ "$ms" != reported ] && [[ "$step" =~ (^|[[:space:]])gating[[:space:]]+([0-9a-f]{7,40})([[:space:]]|$) ]]; then
+    gate=${BASH_REMATCH[2]}; stall_min=$_ST_GATE_STALL_MIN
+  fi
+
   # ------ ELAPSED (since this round's spawn; sysprompt mtime is written then) --
   local elapsed=-1
   local spf; spf="$(dirname "$(_reg "$team")")/team-$team-$role.sysprompt.md"
@@ -314,13 +331,13 @@ _st_row() {
   fi
 
   # ------ FACTS -----------------------------------------------------------
-  local fin= alive= gone= waiting= idle= stalled= parked=
+  local fin='' alive='' gone='' waiting='' idle='' stalled='' parked=''
   [ "$marker" = finished ] && fin=1
 
   # STALLED: derived signals only; fires during mid-work milestones, silent >10m
   case $ms in
     spawned|investigating|drafting)
-      [ "$age" -ge 10 ] && stalled=1 ;;
+      [ "$age" -ge "$stall_min" ] && stalled=1 ;;
   esac
 
   # MODEL_GONE (N3): check main model col and subagent model col
@@ -341,18 +358,27 @@ _st_row() {
     # the row on any cmux error, so a _pane_of failure after it is an error too: UNKNOWN.
     # One `cmux identify` answers both questions (the surface exists; which pane holds it).
     # DEAD on not_found or a null pane_ref; any other error leaves the state UNKNOWN.
-    local idout idrc=0 pp=
-    idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
-    if [ "$idrc" != 0 ]; then
-      case $idout in *not_found*) alive=0 ;; esac
+    local idout idrc=0 pp='' idl=''
+    # Line-anchored (a leading newline), so surface:1 never matches surface:10.
+    local il=$'\n'"$_ST_IDENT"
+    case $il in *$'\n'"$ref "*) idl=${il#*$'\n'"$ref "}; idl=${idl%%$'\n'*} ;; esac
+    if [ -n "$idl" ]; then
+      read -r alive pp _ <<<"$idl"
+      [ "$alive" = - ] && alive=''
+      [ "$pp" = - ] && pp=''
     else
-      # caller object only, no python start per row. An object without a pane_ref means the
-      # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
-      if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
-        pp=gone
-        [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+      idout=$(cmux identify --surface "$ref" 2>&1) || idrc=$?
+      if [ "$idrc" != 0 ]; then
+        case $idout in *not_found*) alive=0 ;; esac
+      else
+        # caller object only, no python start per row. An object without a pane_ref means the
+        # surface is gone; a null caller stays UNKNOWN, as _alive (reap/prune) treats it.
+        if [[ $idout =~ \"caller\"[[:space:]]*:[[:space:]]*(\{[^}]*\}) ]]; then
+          pp=gone
+          [[ ${BASH_REMATCH[1]} =~ \"pane_ref\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && pp=${BASH_REMATCH[1]}
+        fi
+        case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
       fi
-      case $pp in '') ;; gone) alive=0 ;; *) alive=1 ;; esac
     fi
     if [ "$alive" = 1 ]; then
       # In the lead's pane (show's failure path, a hand-dragged tab): a note, not a state
@@ -377,7 +403,7 @@ _st_row() {
       fi
       if [ -n "$_ST_UUID_MAP" ] && [ -n "$_ST_NOTIF_DATA" ]; then
         # Line-anchored lookups (a leading newline), so surface:1 never matches surface:10.
-        local uuid= um nl
+        local uuid='' um nl
         um=$'\n'"$_ST_UUID_MAP"
         case $um in *$'\n'"$ref="*) uuid=${um#*$'\n'"$ref="}; uuid=${uuid%%$'\n'*} ;; esac
         if [ -n "$uuid" ]; then
@@ -403,12 +429,13 @@ _st_row() {
   # Measured state from the plugin's event log (live rows only: a finished teammate's log is
   # history). It wins over the silence and notification inference above, under tmux too:
   # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
-  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
+  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?, except
+  # while gating: an idle turn past the gate limit means the gate is over or abandoned),
   # waiting only from an open AskUserQuestion, and a permission request is its own state.
-  local evs=- eva=- evt=- perm= _ev
+  local evs=- eva=- evt=- perm='' _ev
   if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
     read -r evs eva evt <<<"$_ev"
-    idle= stalled= waiting=
+    idle='' stalled='' waiting=''
     case $evs in
       PERMISSION) perm=1 ;;
       IDLE|ENDED) [ "$ms" = reported ] || idle=1 ;;
@@ -416,11 +443,12 @@ _st_row() {
     # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
     [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
-      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1
+      [ "$gate" != - ] && { [ "$evs" = IDLE ] || [ "$evs" = ENDED ]; } && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1 ;;
     esac
   fi
 
-  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled" "$perm")
+  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled" "$perm" "${gate#-}")
 
   # Notes: context a token alone cannot carry
   local note=
@@ -429,11 +457,11 @@ _st_row() {
   elif [ "$state" = DEAD ] && [ -n "$rpt" ] && [ -f "$rpt" ]; then note="report safe; resume unavailable"
   fi
 
-  # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
+  # Record contract: 15 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt" "$sk" "$sn"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt" "$sk" "$sn" "$gate"
 }
 
 # _st_records <reg> <run> <leadpane> <team>: one _st_row record per non-dash teammate
@@ -442,74 +470,20 @@ _st_row() {
 _st_records() {
   local reg="$1" run="$2" leadpane="$3" team="$4"
 
-  # Build surface ref → UUID map (single python3 call).
-  # list-panes --json has surface_refs[] + surface_ids[] in parallel arrays.
-  _ST_UUID_MAP=
-  if command -v cmux >/dev/null && command -v python3 >/dev/null \
-      && [ -n "${CMUX_WORKSPACE_ID:-}" ]; then
-    _ST_UUID_MAP=$(python3 -c "
-import json, subprocess, os, sys
-ws = os.environ.get('CMUX_WORKSPACE_ID', '')
-if not ws:
-    sys.exit(0)
-try:
-    r = subprocess.run(['cmux', 'list-panes', '--workspace', ws, '--json'],
-                      capture_output=True, text=True, timeout=5)
-    data = json.loads(r.stdout)
-    for pane in data.get('panes', []):
-        for ref, uid in zip(pane.get('surface_refs', []),
-                            pane.get('surface_ids', [])):
-            print(ref + '=' + uid)
-except Exception:
-    pass
-" 2>/dev/null || true)
-  fi
-
-  # Build team UUID set from registry refs (used to filter notification data).
-  local _st_team_uuids=""
-  if [ -n "$_ST_UUID_MAP" ]; then
-    while IFS= read -r row; do
-      [ -z "$row" ] && continue
-      local _lay _ref _uid
-      _lay=$(awk '{print $3}' <<<"$row")
-      [ "$_lay" = dash ] && continue
-      _ref=$(awk '{print $2}' <<<"$row")
-      _uid=$(awk -F'=' -v r="$_ref" '$1==r {print $2; exit}' <<<"$_ST_UUID_MAP" 2>/dev/null || true)
-      [ -n "$_uid" ] && _st_team_uuids="$_st_team_uuids $_uid"
-    done < "$reg"
-    _st_team_uuids="${_st_team_uuids# }"
-  fi
-
-  # Fetch notifications for WAITING state detection.
-  # Privacy: filter to team surface UUIDs only; never emit body.
-  # Stale-state: keep NEWEST notification per surface (by created_at), regardless
-  # of read state, so a stale "waiting" cleared by a newer "Completed" won't fire.
-  _ST_NOTIF_DATA=
+  # One python3 process asks cmux everything a refresh needs, concurrently: list-panes
+  # (surface ref -> UUID), list-notifications (newest per team surface) and one identify per
+  # teammate surface. _st_row reads the answers instead of forking `cmux identify` per row.
+  _ST_UUID_MAP='' _ST_NOTIF_DATA='' _ST_IDENT=''
   if command -v cmux >/dev/null && command -v python3 >/dev/null; then
-    _ST_NOTIF_DATA=$(export _ST_TEAM_UUIDS="$_st_team_uuids"; python3 -c "
-import json, subprocess, sys, os
-team_uuids = set(os.environ.get('_ST_TEAM_UUIDS', '').split())
-try:
-    r = subprocess.run(['cmux', 'list-notifications', '--json'],
-                      capture_output=True, text=True, timeout=5)
-    newest = {}  # surface_id -> newest notification dict
-    for n in json.loads(r.stdout):
-        sid = n.get('surface_id', '')
-        if not sid:
-            continue
-        if team_uuids and sid not in team_uuids:
-            continue  # filter to team surfaces only
-        ts = n.get('created_at', '')
-        if sid not in newest or ts > newest[sid].get('created_at', ''):
-            newest[sid] = n
-    for sid, n in newest.items():
-        # Replace | in title/subtitle to keep pipe-split safe; never emit body
-        title = n.get('title', '').replace('|', ' ')
-        subtitle = n.get('subtitle', '').replace('|', ' ')
-        print(sid + '|' + title + '|' + subtitle)
-except Exception:
-    pass
-" 2>/dev/null || true)
+    local _k _v
+    while IFS=$'\t' read -r _k _v; do
+      case $_k in
+        U) _ST_UUID_MAP+="$_v"$'\n' ;;
+        N) _ST_NOTIF_DATA+="$_v"$'\n' ;;
+        I) _ST_IDENT+="$_v"$'\n' ;;
+      esac
+    done < <(python3 -I -c "$_ST_PROBE_PY" "$reg" 2>/dev/null || true)
+    _ST_UUID_MAP=${_ST_UUID_MAP%$'\n'} _ST_NOTIF_DATA=${_ST_NOTIF_DATA%$'\n'} _ST_IDENT=${_ST_IDENT%$'\n'}
   fi
 
   _ST_MODELS=$(_team_models 2>/dev/null || true)
@@ -548,7 +522,83 @@ except Exception:
 # With `json <registry>` after <run-dir> <team> it prints one JSON document instead (the
 # `status --json` contract the TUI monitor reads): the same summary, plus every teammate
 # joined with its registry row and every parsed task. One parser for tasks.md, two outputs.
+# With `both` instead of `json` it prints the @summary record first, then the document
+# (status --json --sync: one run feeds the sidebar and the JSON).
 # ---------------------------------------------------------------------------
+# _ST_PROBE_PY <registry>: the cmux facts one refresh needs, in one process, calls run
+# concurrently. Prints TAB-separated lines:
+#   U  <ref>=<uuid>            list-panes (only with CMUX_WORKSPACE_ID)
+#   N  <uuid>|<title>|<sub>    newest notification per surface, team surfaces only once the
+#                              UUID map is known; '|' replaced, never the body (privacy)
+#   I  <ref> <alive> <pane>    cmux identify: alive 1/0/- (- = unknown), pane ref, gone or -
+read -r -d '' _ST_PROBE_PY <<'PY' || true
+import json, os, re, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
+
+def run(*args):
+    try:
+        r = subprocess.run(['cmux', *args], capture_output=True, text=True, timeout=5)
+        return r.returncode, r.stdout, r.stderr
+    except Exception:
+        return None, '', ''
+
+refs = []
+try:
+    for l in open(sys.argv[1], encoding='utf-8', errors='replace'):
+        c = l.split()
+        # finished rows are never probed (_st_row skips liveness once finished)
+        if len(c) >= 4 and c[0] == 'cmux' and c[2] != 'dash' and (len(c) < 9 or c[8] != 'finished') and c[1] not in refs:
+            refs.append(c[1])
+except OSError:
+    pass
+ws = os.environ.get('CMUX_WORKSPACE_ID', '')
+
+def ident(ref):
+    rc, out, err = run('identify', '--surface', ref)
+    if rc is None:
+        return '-', '-'
+    if rc != 0:
+        return ('0' if 'not_found' in out + err else '-'), '-'
+    # Same reading as _st_row's fallback: an object without a pane_ref is a gone surface,
+    # a null caller is unknown (as _alive treats it).
+    m = re.search(r'"caller"\s*:\s*(\{[^}]*\})', out + err)
+    if not m:
+        return '-', '-'
+    p = re.search(r'"pane_ref"\s*:\s*"([^"]+)"', m.group(1))
+    return ('1', p.group(1)) if p else ('0', 'gone')
+
+with ThreadPoolExecutor(max_workers=8) as ex:
+    panes = ex.submit(run, 'list-panes', '--workspace', ws, '--json') if ws else None
+    notifs = ex.submit(run, 'list-notifications', '--json')
+    ids = {r: ex.submit(ident, r) for r in refs}
+
+umap = {}
+if panes:
+    try:
+        for pane in json.loads(panes.result()[1]).get('panes', []):
+            for ref, uid in zip(pane.get('surface_refs', []), pane.get('surface_ids', [])):
+                umap[ref] = uid
+                print('U\t' + ref + '=' + uid)
+    except Exception:
+        pass
+team = {umap[r] for r in refs if r in umap}
+try:
+    newest = {}   # newest per surface whatever its read state, so a newer "Completed" clears a stale question
+    for n in json.loads(notifs.result()[1]):
+        sid = n.get('surface_id', '')
+        if not sid or (team and sid not in team):
+            continue
+        if sid not in newest or n.get('created_at', '') > newest[sid].get('created_at', ''):
+            newest[sid] = n
+    for sid, n in newest.items():
+        print('N\t' + sid + '|' + n.get('title', '').replace('|', ' ') + '|' + n.get('subtitle', '').replace('|', ' '))
+except Exception:
+    pass
+for r, f in ids.items():
+    a, pp = f.result()
+    print('I\t' + r + ' ' + a + ' ' + pp)
+PY
+
 read -r -d '' _ST_SUMMARY_PY <<'PY' || true
 import glob, json, os, re, sys, time
 run = sys.argv[1]
@@ -566,7 +616,8 @@ for line in sys.stdin:
                       note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]),
                       evs=f[9] if len(f) > 11 else '-', eva=num(f[10]) if len(f) > 11 else -1,
                       evt=f[11] if len(f) > 11 else '-',
-                      sk=num(f[12]) if len(f) > 13 else -1, sn=num(f[13]) if len(f) > 13 else -1)
+                      sk=num(f[12]) if len(f) > 13 else -1, sn=num(f[13]) if len(f) > 13 else -1,
+                      gate=f[14] if len(f) > 14 else '-')
 tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
@@ -622,7 +673,8 @@ for rp in glob.glob(os.path.join(run, 'reports', '*.md')):
         pass
 if mode != 'json':
     print('\t'.join(map(str, ['@summary', done, total, pct, est, elapsed, eta, len(pending), unassigned, len(prs), ','.join(ready_owners)])))
-    sys.exit(0)
+    if mode != 'both':
+        sys.exit(0)
 
 # ---- json: the status --json contract (version 1). Keys are only ever added. ----
 reg = sys.argv[4]
@@ -678,7 +730,8 @@ for title, r in recs.items():
         status_mtime=mtime(sp) if sp else None,
         event_state=dash(r['evs']), event_age_s=None if r['eva'] < 0 else r['eva'],
         open_tool=dash(r['evt']),
-        step_k=None if r['sk'] < 0 else r['sk'], step_n=None if r['sn'] < 0 else r['sn']))
+        step_k=None if r['sk'] < 0 else r['sk'], step_n=None if r['sn'] < 0 else r['sn'],
+        gate_sha=dash(r['gate'])))
 def split_rest(rest):
     parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
     out = dict(scope=parts[0].strip() or None, owns=None)
@@ -711,8 +764,8 @@ print(json.dumps(dict(
     prs=sorted(prs), teammates=mates, tasks=tlist), ensure_ascii=False))
 PY
 _st_summary() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "${2:-}"; }
-# _st_json <run-dir> <registry> <team>: teammate records on stdin -> the status --json document
-_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" json "$2"; }
+# _st_json <run-dir> <registry> <team> [json|both]: teammate records on stdin -> the status --json document
+_st_json() { python3 -I -c "$_ST_SUMMARY_PY" "${1:--}" "$3" "${4:-json}" "$2"; }
 
 # ---------------------------------------------------------------------------
 # Frame rendering: a pure function of records + width + colour + charset.
@@ -740,6 +793,7 @@ STATES = {'PERMISSION':('⊘', '!', 'permission',  'alert'),
           'DEAD':      ('✗', 'x', 'dead',        'alert'),
           'STALLED':   ('⧗', '~', 'stalled?',    'alert'),
           'WORKING':   ('◐', '*', 'working',     'active'),
+          'GATING':    ('⧖', 'g', 'gating',      'active'),
           'IDLE':      ('◌', '-', 'idle',        'dim'),
           'UNKNOWN':   ('?', '?', 'unknown',     'dim'),
           'FINISHED':  ('✓', '+', 'finished',    'done')}
@@ -1084,6 +1138,7 @@ _st_collect() {
 _ST_TUI=()
 _st_tui_pick() {
   _ST_TUI=()
+  # shellcheck disable=SC2154 # $here is set by team.sh before it sources this lib
   local py="$here/monitor_tui.py"
   [ "${TEAM_MONITOR_UI:-auto}" != classic ] && [ -f "$py" ] || return 1
   if python3 -c 'import sys, textual; sys.exit(not 1 <= int(textual.__version__.split(".")[0]) <= 8)' 2>/dev/null; then
@@ -1117,7 +1172,7 @@ _st_close_self() {
 # ---------------------------------------------------------------------------
 
 sub_status() {
-  local watch= json= sync=
+  local watch='' json='' sync=''
   while :; do case ${1:-} in
     --watch) watch=1; shift ;; --json) json=1; shift ;; --sync) sync=1; shift ;;
     *) break ;;
@@ -1130,7 +1185,11 @@ sub_status() {
     local run recs; run=$(_st_run_of "$team")
     recs=$(_st_collect "$team" --records) || return 3
     if [ -n "$sync" ]; then
-      _st_sync_apply "$team" "$recs"$'\n'"$(printf '%s\n' "$recs" | _st_summary "${run:--}" "$team" 2>/dev/null)" || true
+      # One process for both: the @summary record (first line) feeds the sidebar, the rest is the document.
+      local out; out=$(printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team" both)
+      _st_sync_apply "$team" "$recs"$'\n'"${out%%$'\n'*}" || true
+      printf '%s\n' "${out#*$'\n'}"
+      return 0
     fi
     printf '%s\n' "$recs" | _st_json "${run:--}" "$reg" "$team"
     return 0
@@ -1167,7 +1226,7 @@ sub_status() {
       *) printf 'monitor: the TUI stopped (exit %s); using the classic monitor\n' "$trc" >&2; sleep 2 ;;
     esac
   fi
-  local km= mouse=0
+  local km='' mouse=0
   if [ "$keys" = 1 ]; then
     km=$(mktemp "${TMPDIR:-/tmp}/team-keymap.XXXXXX") || km=
     # Mouse capture takes click-drag away from the terminal's own text selection
@@ -1176,6 +1235,7 @@ sub_status() {
     # Leave the terminal as we found it on every exit path, mouse mode included.
     # The trap runs after sub_status returned, when its locals are gone (set -u would kill it and
     # turn a clean exit into 1), so the values are baked into the string now.
+    # shellcheck disable=SC2064 # expanding now is the point (see above)
     trap "rm -f -- $(printf %q "$km") 2>/dev/null
           [ $mouse = 1 ] && printf '\\033[?1006l\\033[?1000l'
           stty echo 2>/dev/null; printf '\\033[?25h'" EXIT INT TERM
@@ -1191,7 +1251,7 @@ sub_status() {
   local autoclose=1 was_all_fin=
   [ "${TEAM_MONITOR_AUTOCLOSE:-1}" = 0 ] && autoclose=0
 
-  local prev= recs frame k
+  local prev='' recs frame k
   while [ -f "$reg" ]; do
     recs=$(_st_collect "$team" || true)
     frame=$(printf '%s\n' "$recs" \
@@ -1232,7 +1292,7 @@ sub_status() {
           [1-9]) _st_focus "$team" "$km" "$k" && prev= ;;
           $'\033')
             # Possible SGR mouse report: ESC [ < btn ; col ; row (M press | m release).
-            local seq= c
+            local seq='' c
             while read -rsn1 -t 0.2 c 2>/dev/null; do
               seq+=$c
               case $c in [Mm]) break ;; esac
@@ -1400,6 +1460,9 @@ sub_sync() {
 # _st_sync_apply <team> <records>: pill + progress + transition log from _st_records
 # output. Read-only towards teammates (decision 28): it only writes the sidebar and
 # its own .sync state file, because the monitor pane and the lead both run it.
+# _st_frac <num> <den>: num/den as 0.00-1.00 (two decimals, rounded half up), no fork.
+_st_frac() { local h=$(( ($1 * 200 + $2) / ($2 * 2) )); printf '%d.%02d' $((h / 100)) $((h % 100)); }
+
 _st_sync_apply() {
   local team=$1 recs=$2
   command -v cmux >/dev/null 2>&1 || return 0
@@ -1412,7 +1475,7 @@ _st_sync_apply() {
   # means at least one real self-report, which is what switches the bar over.
   local pctsum=0 pctn=0 selfn=0
   local role title state ms _step _age _note pct
-  local s_done= s_total= s_pct=-1 s_est=0
+  local s_done='' s_total='' s_pct=-1 s_est=0
   while IFS=$'\t' read -r role title state ms _step _age _note pct _; do
     [ -n "$title" ] || continue
     if [ "$role" = @summary ]; then
@@ -1432,7 +1495,7 @@ _st_sync_apply() {
   # Phase, pill colour and log level move together (one palette with the pane)
   local phase pill_color level
   if [ "$total" -gt 0 ] && [ "$reported" -ge "$total" ]; then
-    phase=done; pill_color=$_ST_C_DONE; level=success
+    phase="done"; pill_color=$_ST_C_DONE; level=success
   elif [ "$needs" -gt 0 ]; then
     phase="needs you"; pill_color=$_ST_C_ALERT; level=warning
   elif [ "$reported" -gt 0 ] || [ -n "$started" ]; then
@@ -1447,10 +1510,10 @@ _st_sync_apply() {
   if [ "$selfn" -gt 0 ] && [ "$pctn" -gt 0 ]; then
     avg=$((pctsum / pctn))
   fi
-  if [ -n "$avg" ] && command -v python3 >/dev/null 2>&1; then
-    frac=$(python3 -c "print(f'{$avg/100:.2f}')" 2>/dev/null) || frac="0.0"
-  elif [ "$total" -gt 0 ] && command -v python3 >/dev/null 2>&1; then
-    frac=$(python3 -c "print(f'{$reported/$total:.2f}')" 2>/dev/null) || frac="0.0"
+  if [ -n "$avg" ]; then
+    frac=$(_st_frac "$avg" 100)
+  elif [ "$total" -gt 0 ]; then
+    frac=$(_st_frac "$reported" "$total")
   fi
 
   # '~' marks the average as self-reported; the hard N/M fact stays alongside it.
@@ -1460,7 +1523,7 @@ _st_sync_apply() {
   if [ "${s_total:-0}" -gt 0 ] 2>/dev/null && [ "$s_pct" -ge 0 ] 2>/dev/null; then
     local t=; [ "$s_est" = 1 ] && t='~'
     pill="$phase · $t$s_pct% · $s_done/$s_total tasks"
-    frac=$(python3 -c "print(f'{$s_pct/100:.2f}')" 2>/dev/null) || frac="0.0"
+    frac=$(_st_frac "$s_pct" 100)
   fi
 
   # Update sidebar (never fatal; use per-team key and explicit workspace)
@@ -1487,13 +1550,14 @@ _st_sync_apply() {
     cur_rows="${cur_rows}${title}"$'\t'"${state}"$'\t'"${ms}"$'\n'
     prev=$(awk -F'\t' -v t="$title" '$1==t {print; exit}' <<<"$prev_rows" 2>/dev/null || true)
     pstate=$(awk -F'\t' '{print $2}' <<<"$prev"); pms=$(awk -F'\t' '{print $3}' <<<"$prev")
-    msg= lvl=
+    msg='' lvl=''
     if [ -z "$prev" ] || [ "$state" != "$pstate" ]; then
       case $state in
         PERMISSION) msg="waiting on a permission prompt" lvl=warning ;;
         WAITING)    msg="waiting (needs input)" lvl=warning ;;
         IDLE)       msg="idle (turn ended without a report)" lvl=info ;;
         STALLED)    msg="stalled?" lvl=warning ;;
+        GATING)     msg="in a no-mistakes gate" lvl=info ;;
         DEAD)       msg=dead lvl=error ;;
         MODEL_GONE) msg="model gone" lvl=error ;;
         FINISHED)   msg=finished lvl=success ;;

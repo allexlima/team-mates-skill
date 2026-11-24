@@ -82,7 +82,7 @@ REG() { echo "$TEAM_REG_DIR/team-$1.tabs"; }
 
 # X1-X2: pane grid
 : > "$TMUX_LOG"
-o1=$(sp x1 a "$RUN/prompts/p.md" sonnet); o2=$(sp x1 b "$RUN/prompts/p.md" sonnet); o3=$(sp x1 c "$RUN/prompts/p.md" sonnet)
+o1=$(sp x1 a "$RUN/prompts/p.md" sonnet); o2=$(sp x1 b "$RUN/prompts/p.md" sonnet); sp x1 c "$RUN/prompts/p.md" sonnet >/dev/null
 row_a=$(awk '$4=="x1-a"' "$(REG x1)")
 { [[ $row_a == "tmux %"*" pane x1-a "* ]] && grep -qE '^split-window -d -h -t %0 ' "$TMUX_LOG"; } \
   && pass "X1: spawn opens a tmux pane right of the lead and records a tmux row" \
