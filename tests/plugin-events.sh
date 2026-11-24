@@ -3,6 +3,7 @@
 # writer must append one {t, ev, tool, ntype} line, never log tool input,
 # and do nothing when TEAM_EVENTS_FILE is unset or unsafe.
 #   bash tests/plugin-events.sh
+# shellcheck disable=SC2034 # check() eval-s its condition strings, so the variables they read look unused
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 P="$HERE/skills/team/plugin"

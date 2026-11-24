@@ -31,7 +31,7 @@ _secret_lines() { sed -E 's/(^|[^A-Za-z0-9._%+-])git@/\1git /g' | grep -nEi -- "
 # Helpers
 # ---------------------------------------------------------------------------
 setup() {
-  rm -rf "$W/repo" "$W/lib"
+  rm -rf "${W:?}/repo" "${W:?}/lib"
   mkdir -p "$W/repo/.team/roles" "$W/lib"
 }
 
@@ -290,7 +290,7 @@ out=$(sub_role_promote badpii 2>&1) && rc=0 || rc=$?
 
 # mkdir -p: library dir does not pre-exist
 setup
-rm -rf "$W/lib"
+rm -rf "${W:?}/lib"
 write_role "$W/repo/.team/roles" myrole "# ok"
 out=$(sub_role_promote myrole 2>&1) && rc=0 || rc=$?
 [ $rc = 0 ] && [ -f "$W/lib/myrole.md" ] \
