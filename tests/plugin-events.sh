@@ -253,7 +253,7 @@ now=$(date +%s)
 printf '{"t":%s,"ev":"PreToolUse","tool":"Bash"}\n' "$((now - 1200))" > "$RUN/events/q.jsonl"
 rec=$(row); f() { printf '%s' "$rec" | awk -F'\t' -v i="$1" '{print $i}'; }
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}'); empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
-check "row: 14 fields, none empty" '[ "$nf" = 14 ] && [ -z "$empty" ]'
+check "row: 15 fields, none empty" '[ "$nf" = 15 ] && [ -z "$empty" ]'
 check "row: long tool open, so not stalled? despite 20 silent min" '[ "$(f 3)" = WORKING ] && [ "$(f 12)" = Bash ]'
 printf '{"t":%s,"ev":"PermissionRequest","tool":"Bash"}\n' "$((now - 5))" >> "$RUN/events/q.jsonl"
 rec=$(row)
@@ -277,6 +277,6 @@ rm -f "$RUN/events/q.jsonl"; rec=$(row)
 check "row: no log: old inference, dashes in event fields" '[ "$(f 3)" = STALLED ] && [ "$(f 10)" = - ] && [ "$(f 12)" = - ]'
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' q d1-q PERMISSION investigating x 1 - 30 2 PERMISSION 7 Bash > "$W/recs"
 js=$(bash -c '. "$1"; _st_json "$2" "$3/none.tabs" d1 < "$3/recs"' _ "$LIB" "$RUN" "$W")
-check "status --json: event_state, event_age_s, open_tool" 'python3 -I -c "import json,sys; m=json.loads(sys.argv[1])[\"teammates\"][0]; sys.exit(not (m[\"event_state\"]==\"PERMISSION\" and m[\"event_age_s\"]==7 and m[\"open_tool\"]==\"Bash\" and list(m)[-5:-2]==[\"event_state\",\"event_age_s\",\"open_tool\"]))" "$js"'
+check "status --json: event_state, event_age_s, open_tool" 'python3 -I -c "import json,sys; m=json.loads(sys.argv[1])[\"teammates\"][0]; sys.exit(not (m[\"event_state\"]==\"PERMISSION\" and m[\"event_age_s\"]==7 and m[\"open_tool\"]==\"Bash\" and list(m)[-6:-3]==[\"event_state\",\"event_age_s\",\"open_tool\"]))" "$js"'
 
 echo; [ "$fails" = 0 ] && echo "all plugin-events tests passed" || { echo "$fails failed"; exit 1; }
