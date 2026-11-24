@@ -16,6 +16,7 @@ All notable changes to this project are recorded here. The format follows
 
 - The lead asks the user every question (role pulls, lessons, merges, the
   build-run OK) through AskUserQuestion.
+- CI's `shellcheck` step now fails on warnings, not only errors.
 
 ### Fixed
 
