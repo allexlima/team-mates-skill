@@ -6,6 +6,17 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `gating` monitor state for a teammate inside a no-mistakes gate: its
+  status line ends in `gating <sha>`, `status --json` carries `gate_sha`, and
+  it turns `stalled?` only after 45 silent minutes instead of 10.
+
+### Changed
+
+- The lead asks the user every question (role pulls, lessons, merges, the
+  build-run OK) through AskUserQuestion.
+
 ### Fixed
 
 - `team.sh close` removes the team's `.sync` sidecar once every row is closed,
