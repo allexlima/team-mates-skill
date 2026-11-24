@@ -562,7 +562,7 @@ fi
 # closed. Only a live surface whose title still matches its row counts (refs get reused), and the
 # caller's own surface is never a candidate. --yes closes them under each registry's lock.
 if [ "$sub" = reap ]; then
-  yes= excl=
+  yes='' excl=''
   while [ $# -gt 0 ]; do case $1 in
     --yes) yes=1; shift ;;
     --exclude) excl=${2:?--exclude <team>}; shift 2 ;;
@@ -586,7 +586,7 @@ if [ "$sub" = reap ]; then
       [ "$(_row_root "${rd:-}" "${rt:-}")" = "$me" ] || ours=
     done < "$reg"
     [ "$any" = 1 ] || continue
-    keep="" failed= held=
+    keep="" failed='' held=''
     while IFS= read -r row; do
       read -r b r _ title _ _ rd rt _ <<<"$row" || true
       [ -n "${r:-}" ] || continue
@@ -926,7 +926,7 @@ if [ "$sub" = show ] || [ "$sub" = list ]; then
   exit 0
 fi
 
-layout=pane worktree= caveman=1 replace= resume= branch=
+layout=pane worktree='' caveman=1 replace='' resume='' branch=''
 while :; do case ${1:-} in
   --resume) resume=1; shift ;;
   --tmux) export TEAM_MUX=tmux; shift ;;

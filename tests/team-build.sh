@@ -775,7 +775,7 @@ JSON
   pf="$R/p.md"; printf 'prompt\n' > "$pf"
   TM="rv1d$$"
   _reset_logs
-  out=$(cd "$R" && CMUX_WORKSPACE_ID= CMUX_SURFACE_ID= \
+  out=$(cd "$R" && CMUX_WORKSPACE_ID='' CMUX_SURFACE_ID='' \
     bash "$TEAM_SH" spawn "$TM" worker "$pf" sonnet 2>&1) && rc=0 || rc=$?
   [ "$rc" = 3 ] && [[ "$out" == *"cmux pane"* || "$out" == *"CMUX_WORKSPACE"* || "$out" == *"cmux"* ]] \
     && pass "rev4-1d: spawn outside cmux pane (no CMUX_WORKSPACE_ID) → exit 3" \
@@ -787,7 +787,7 @@ JSON
   R="$W/rv1e"; _mkgit "$R"
   # Remove cmux entirely for this test
   mv "$W/bin/cmux" "$W/bin/cmux.bak"
-  out=$(cd "$R" && CMUX_WORKSPACE_ID= CMUX_SURFACE_ID= \
+  out=$(cd "$R" && CMUX_WORKSPACE_ID='' CMUX_SURFACE_ID='' \
     bash "$TEAM_SH" init myteam 2>&1) && rc=0 || rc=$?
   mv "$W/bin/cmux.bak" "$W/bin/cmux"
   [ "$rc" = 0 ] \
@@ -1184,7 +1184,7 @@ _disallow_of() {
   pf="$RUNP/prompts/b.md"; printf 'prompt\n' > "$pf"
   TM="permw$$"; _reset_logs
   (cd "$R" && bash "$TEAM_SH" spawn --worktree "$TM" b "$pf" sonnet) >/dev/null 2>&1 || true
-  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss= bad=
+  a=$(_allow_of); d=$(_disallow_of); wt="$R/.team/worktrees/$TM-b"; miss='' bad=''
   for p in "$wt" "$(cd "$wt" 2>/dev/null && pwd -P)"; do
     case ",$a," in *",Edit(/$p/**),"*) ;; *) miss+=" Edit(/$p/**)" ;; esac
   done

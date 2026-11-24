@@ -88,7 +88,7 @@ fixture() {
   R=$(cd "$R" && pwd -P)
   RUN="$R/.team/runs/2026-10-08-$T"; mkdir -p "$RUN/prompts" "$RUN/reports" "$RUN/status"
   : > "$RUN/tasks.md"; REG="$TEAM_REG_DIR/team-$T.tabs"; : > "$REG"; : > "$CMUX_LOG"
-  TREE= CLOSEFAIL= PROBE=   # per-case knobs read by fin(); reset so one case never leaks into the next
+  TREE='' CLOSEFAIL='' PROBE=''   # per-case knobs read by fin(); reset so one case never leaks into the next
 }
 # row <ref> <role> [state] [sid] [cwd] [layout]  -> appends an 11-col registry row
 row() {
