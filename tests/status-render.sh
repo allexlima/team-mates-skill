@@ -158,7 +158,7 @@ done
   || fail "G7: narrow-width priority" "$bad"
 
 # ═══ G8 — decision 64: never glyph alone — every state has a distinct ASCII glyph ═══
-asc8=$( { for st in FINISHED WORKING WAITING DEAD MODEL_GONE IDLE STALLED UNKNOWN; do rec "r_$st" "fx-r_$st" "$st" drafting step 3 ""; done; } | frame fx 60 0 1 )
+asc8=$( { for st in FINISHED WORKING GATING WAITING DEAD MODEL_GONE IDLE STALLED UNKNOWN; do rec "r_$st" "fx-r_$st" "$st" drafting step 3 ""; done; } | frame fx 60 0 1 )
 glyphs=$(python3 -I - "$asc8" <<'PYG'
 import sys
 lines = sys.argv[1].split("\n")
@@ -166,7 +166,7 @@ hdr = next((i for i, l in enumerate(lines) if "ROLE" in l), len(lines))
 out = {}
 for i, l in enumerate(lines):
     t = l.split()
-    for st in ("FINISHED","WORKING","WAITING","DEAD","MODEL_GONE","IDLE","STALLED","UNKNOWN"):
+    for st in ("FINISHED","WORKING","GATING","WAITING","DEAD","MODEL_GONE","IDLE","STALLED","UNKNOWN"):
         if "r_" + st in t:
             k = t.index("r_" + st)
             out[st] = t[k-1] if i < hdr else t[k+1]   # alert rows: glyph before role; table rows: after
@@ -178,8 +178,8 @@ PYG
 )
 n_states=$(wc -w <<<"$glyphs" | tr -d ' ')
 n_distinct=$(tr ' ' '\n' <<<"$glyphs" | sed 's/.*=//' | sort -u | wc -l | tr -d ' ')
-{ [ "$n_states" = 8 ] && [ "$n_distinct" = 8 ]; } \
-  && pass "G8: all 8 states have distinct ASCII glyphs (WAITING vs MODEL_GONE no longer collide) (decision 64)" \
+{ [ "$n_states" = 9 ] && [ "$n_distinct" = 9 ]; } \
+  && pass "G8: all 9 states have distinct ASCII glyphs (WAITING vs MODEL_GONE no longer collide) (decision 64)" \
   || fail "G8: ASCII glyph collision" "states=$n_states distinct=$n_distinct :: $glyphs"
 
 # === M*: overall task progress, team ETA, folded finished rows, backlog line ===
@@ -616,8 +616,8 @@ printf 'plain step with no note\n' > "$RUNN/status/q.txt"
 rec=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null || true)
 nf=$(printf '%s' "$rec" | awk -F'\t' '{print NF}')
 empty=$(printf '%s' "$rec" | awk -F'\t' '{for(i=1;i<=NF;i++) if ($i=="") print i}')
-{ [ "$nf" = 14 ] && [ -z "$empty" ]; } \
-  && pass "N10: _st_row emits 14 fields and never an empty one (tab-collapse shifts fields)" \
+{ [ "$nf" = 15 ] && [ -z "$empty" ]; } \
+  && pass "N10: _st_row emits 15 fields and never an empty one (tab-collapse shifts fields)" \
   || fail "N10: record field contract" "nf=$nf empty_at=[$empty] rec=[$rec]"
 
 # And the reader must land on the right field: pct, not elapsed.
@@ -642,8 +642,35 @@ for c in 'T3: 2/5 · drafting tests|40|2|5|T3: 2/5 · drafting tests' \
 done
 printf 'T3: 2/5 · drafting\n' > "$RUNN/status/q.txt"
 js=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1 | _st_json "$3" "$TEAM_REG_DIR/none.tabs" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null)
-python3 -I -c 'import json,sys; m=json.loads(sys.argv[1])["teammates"][0]; sys.exit(not (m["pct"]==40 and m["step_k"]==2 and m["step_n"]==5 and list(m)[-2:]==["step_k","step_n"]))' "$js" \
-  && pass "N12: status --json carries step_k/step_n last, pct 40" || fail "N12: json step fields" "${js:0:300}"
+python3 -I -c 'import json,sys; m=json.loads(sys.argv[1])["teammates"][0]; sys.exit(not (m["pct"]==40 and m["step_k"]==2 and m["step_n"]==5 and list(m)[-3:]==["step_k","step_n","gate_sha"]))' "$js" \
+  && pass "N12: status --json carries step_k/step_n before gate_sha, pct 40" || fail "N12: json step fields" "${js:0:300}"
+
+# N13  "gating <sha>": a teammate inside a no-mistakes gate is GATING, and stalled? waits
+# _ST_GATE_STALL_MIN (45) silent minutes instead of 10. gate_sha carries the sha.
+grow() { printf '%s\n' "$1" > "$RUNN/status/q.txt"
+  touch -t "$(date -r $(( $(date +%s) - $2 * 60 )) +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$(( $(date +%s) - $2 * 60 ))" +%Y%m%d%H%M.%S)" "$RUNN/status/q.txt"
+  LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null | awk -F'\t' '{print $3 "|" $15}'; }
+base=$(grow 'investigating facts' 0); base=${base%%|*}
+for c in 'T5: gating abc1234 · 80%|0|GATING|abc1234' \
+         'gating 0123456789abcdef0123456789abcdef01234567|20|GATING|0123456789abcdef0123456789abcdef01234567' \
+         'T5: gating abc1234|50|STALLED|abc1234' \
+         'investigating facts|20|STALLED|-' \
+         'T5: gating notasha|0|'"$base"'|-' \
+         'T5: investigating gating code|0|'"$base"'|-'; do
+  in=${c%%|*} r=${c#*|}; mins=${r%%|*} want=${r#*|}; got=$(grow "$in" "$mins")
+  [ "$got" = "$want" ] && pass "N13: '$in' silent ${mins}m gives state|gate $want" || fail "N13: '$in' ${mins}m" "got=[$got] want=[$want]"
+done
+printf 'T5: gating abc1234\n' > "$RUNN/status/q.txt"
+js=$(LC_ALL=$UTF8_LOC TEAM_REG_DIR="$TEAM_REG_DIR" bash -c '. "$1"; _reg() { echo "$TEAM_REG_DIR/team-$1.tabs"; }; _st_row "$2" "$3" "" n1 | _st_json "$3" "$TEAM_REG_DIR/none.tabs" n1' _ "$LIB" "cmux surface:160 pane n1-q - - $RUNN $G live 1 $G" "$RUNN" 2>/dev/null)
+python3 -I -c 'import json,sys; m=json.loads(sys.argv[1])["teammates"][0]; sys.exit(not (m["state"]=="GATING" and m["gate_sha"]=="abc1234"))' "$js" \
+  && pass "N13: status --json shows state GATING and gate_sha" || fail "N13: json gate fields" "${js:0:300}"
+# A measured event log (status file fresh) goes stale on the same 45-minute limit while gating.
+mkdir -p "$RUNN/events"; printf '{"t":%s,"ev":"PostToolUse","tool":"Bash"}\n' "$(( $(date +%s) - 20 * 60 ))" > "$RUNN/events/q.jsonl"
+got=$(grow 'T5: gating abc1234' 0); got2=$(grow 'T5: drafting' 0)
+rm -f "$RUNN/events/q.jsonl"
+{ [ "$got" = "GATING|abc1234" ] && [ "${got2%%|*}" = STALLED ]; } \
+  && pass "N13: with an event log 20m silent, gating stays GATING and a plain step goes STALLED" \
+  || fail "N13: event-log gate threshold" "gating=[$got] plain=[$got2]"
 
 # ---------------------------------------------------------------------------
 # AC*  the monitor closes itself once every teammate is finished

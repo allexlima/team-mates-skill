@@ -40,6 +40,9 @@
 
 _ST_UUID_MAP=
 _ST_NOTIF_DATA=
+# Stall limit (minutes) while a teammate is inside a no-mistakes gate: a gate runs about
+# 30 min, mostly silent waits on its review and CI, so 1.5x that before stalled?.
+_ST_GATE_STALL_MIN=45
 
 # Shared palette (decision 16): the sidebar pill and the monitor pane use the same
 # four roles. None is "#4C8DFF" — `cmux set-status --help` documents that hex as the
@@ -105,7 +108,7 @@ if ! declare -f _reg_add >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled> [<permission>]
+# _st_state <finished> <backend> <alive> <model_gone> <waiting> <idle> <stalled> [<permission>] [<gating>]
 # Pure: prints exactly one state token from the detection facts _st_row gathers.
 # Flags are 1 or empty; <alive> is 1 (surface exists), 0 (gone) or empty (unknown,
 # e.g. no cmux on PATH). Decision order, first match wins:
@@ -119,14 +122,17 @@ fi
 #   WAITING     an AskUserQuestion still open in the event log; without a log, the newest
 #               notification is an AskUserQuestion ("Claude question")
 #   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
-#               measured WORKING with no event and no open tool for >=10 min
+#               measured WORKING with no event and no open tool for >=10 min. Both limits are
+#               _ST_GATE_STALL_MIN while the status file's last line says `gating <sha>`
+#   GATING      the status file's last line says `gating <sha>`: inside a no-mistakes gate,
+#               which waits on a review or CI for long silent stretches (wins over IDLE)
 #   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
 #               or without a log the newest notification is "Completed in …" (routine while
 #               waiting on a peer; after 10 silent min it is STALLED)
 #   WORKING     everything else (including "report on disk" while still alive)
 # ---------------------------------------------------------------------------
 _st_state() {
-  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7 perm=${8:-}
+  local fin=$1 backend=$2 alive=$3 gone=$4 waiting=$5 idle=$6 stalled=$7 perm=${8:-} gating=${9:-}
   if [ -n "$fin" ]; then echo FINISHED
   elif { [ "$backend" != cmux ] && [ "$backend" != tmux ]; } || [ -z "$alive" ]; then echo UNKNOWN
   elif [ "$alive" != 1 ]; then echo DEAD
@@ -134,6 +140,7 @@ _st_state() {
   elif [ -n "$perm" ]; then echo PERMISSION
   elif [ -n "$waiting" ]; then echo WAITING
   elif [ -n "$stalled" ]; then echo STALLED
+  elif [ -n "$gating" ]; then echo GATING
   elif [ -n "$idle" ]; then echo IDLE
   else echo WORKING
   fi
@@ -290,6 +297,12 @@ _st_row() {
     pct=$((sk * 100 / sn))
   fi
 
+  # ------ GATE ("gating <sha>": the teammate is inside a no-mistakes gate) ---
+  local gate=- stall_min=10
+  if [ "$ms" != reported ] && [[ "$step" =~ (^|[[:space:]])gating[[:space:]]+([0-9a-f]{7,40})([[:space:]]|$) ]]; then
+    gate=${BASH_REMATCH[2]}; stall_min=$_ST_GATE_STALL_MIN
+  fi
+
   # ------ ELAPSED (since this round's spawn; sysprompt mtime is written then) --
   local elapsed=-1
   local spf; spf="$(dirname "$(_reg "$team")")/team-$team-$role.sysprompt.md"
@@ -320,7 +333,7 @@ _st_row() {
   # STALLED: derived signals only; fires during mid-work milestones, silent >10m
   case $ms in
     spawned|investigating|drafting)
-      [ "$age" -ge 10 ] && stalled=1 ;;
+      [ "$age" -ge "$stall_min" ] && stalled=1 ;;
   esac
 
   # MODEL_GONE (N3): check main model col and subagent model col
@@ -416,11 +429,11 @@ _st_row() {
     # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
     [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
-      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge 600 ] && stalled=1 ;;
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1 ;;
     esac
   fi
 
-  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled" "$perm")
+  local state; state=$(_st_state "$fin" "$backend" "$alive" "$gone" "$waiting" "$idle" "$stalled" "$perm" "${gate#-}")
 
   # Notes: context a token alone cannot carry
   local note=
@@ -429,11 +442,11 @@ _st_row() {
   elif [ "$state" = DEAD ] && [ -n "$rpt" ] && [ -f "$rpt" ]; then note="report safe; resume unavailable"
   fi
 
-  # Record contract: 12 TAB-separated fields, NONE of them empty. Tab is IFS
+  # Record contract: 15 TAB-separated fields, NONE of them empty. Tab is IFS
   # whitespace, so a reader using `read -d $'\t'` collapses consecutive tabs and
   # silently shifts every field after an empty one. Absent values use '-'.
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt" "$sk" "$sn"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$title" "$state" "$ms" "$step" "$age" "${note:--}" "$pct" "$elapsed" "$evs" "$eva" "$evt" "$sk" "$sn" "$gate"
 }
 
 # _st_records <reg> <run> <leadpane> <team>: one _st_row record per non-dash teammate
@@ -566,7 +579,8 @@ for line in sys.stdin:
                       note='' if f[6] == '-' else f[6], pct=num(f[7]), elapsed=num(f[8]),
                       evs=f[9] if len(f) > 11 else '-', eva=num(f[10]) if len(f) > 11 else -1,
                       evt=f[11] if len(f) > 11 else '-',
-                      sk=num(f[12]) if len(f) > 13 else -1, sn=num(f[13]) if len(f) > 13 else -1)
+                      sk=num(f[12]) if len(f) > 13 else -1, sn=num(f[13]) if len(f) > 13 else -1,
+                      gate=f[14] if len(f) > 14 else '-')
 tasks = []   # [id, owner, done, needs, rest-of-line]
 try:
     lines = open(os.path.join(run, 'tasks.md'), encoding='utf-8', errors='replace').read().splitlines()
@@ -678,7 +692,8 @@ for title, r in recs.items():
         status_mtime=mtime(sp) if sp else None,
         event_state=dash(r['evs']), event_age_s=None if r['eva'] < 0 else r['eva'],
         open_tool=dash(r['evt']),
-        step_k=None if r['sk'] < 0 else r['sk'], step_n=None if r['sn'] < 0 else r['sn']))
+        step_k=None if r['sk'] < 0 else r['sk'], step_n=None if r['sn'] < 0 else r['sn'],
+        gate_sha=dash(r['gate'])))
 def split_rest(rest):
     parts = re.split(r'\s+[—–-]+\s+(owns|needs):\s*', rest)
     out = dict(scope=parts[0].strip() or None, owns=None)
@@ -740,6 +755,7 @@ STATES = {'PERMISSION':('⊘', '!', 'permission',  'alert'),
           'DEAD':      ('✗', 'x', 'dead',        'alert'),
           'STALLED':   ('⧗', '~', 'stalled?',    'alert'),
           'WORKING':   ('◐', '*', 'working',     'active'),
+          'GATING':    ('⧖', 'g', 'gating',      'active'),
           'IDLE':      ('◌', '-', 'idle',        'dim'),
           'UNKNOWN':   ('?', '?', 'unknown',     'dim'),
           'FINISHED':  ('✓', '+', 'finished',    'done')}
@@ -1496,6 +1512,7 @@ _st_sync_apply() {
         WAITING)    msg="waiting (needs input)" lvl=warning ;;
         IDLE)       msg="idle (turn ended without a report)" lvl=info ;;
         STALLED)    msg="stalled?" lvl=warning ;;
+        GATING)     msg="in a no-mistakes gate" lvl=info ;;
         DEAD)       msg=dead lvl=error ;;
         MODEL_GONE) msg="model gone" lvl=error ;;
         FINISHED)   msg=finished lvl=success ;;

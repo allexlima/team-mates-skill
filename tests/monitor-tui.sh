@@ -120,6 +120,13 @@ st=$(cd "$G" && CMUX_NULL_REFS=surface:4 bash "$TEAM_SH" status --json j1 2>/dev
   | python3 -I -c 'import json,sys; m={t["title"]: t["state"] for t in json.load(sys.stdin)["teammates"]}; print(m["j1-ui"])')
 [ "$st" = UNKNOWN ] && pass "J5: a null caller leaves the row UNKNOWN, matching _alive" || fail "J5: null caller" "$st"
 
+# ═══ J6 — a `gating <sha>` status line is state GATING with gate_sha, end to end through team.sh ═══
+printf 'T3: gating 9f8e7d6 · 90%%\n' > "$RUN/status/ui.txt"
+st=$(cd "$G" && bash "$TEAM_SH" status --json j1 2>/dev/null \
+  | python3 -I -c 'import json,sys; m={t["title"]: t for t in json.load(sys.stdin)["teammates"]}["j1-ui"]; print(m["state"], m["gate_sha"])')
+printf 'T3: load test · 10%%\n' > "$RUN/status/ui.txt"
+[ "$st" = "GATING 9f8e7d6" ] && pass "J6: status --json reports GATING and gate_sha for a teammate inside a gate" || fail "J6: gating state" "$st"
+
 # ═══ J2 — the same counts as the classic frame (one parser, two outputs) ═══
 frame=$(cd "$G" && LC_ALL=en_US.UTF-8 TEAM_COLS=100 bash "$TEAM_SH" status j1 2>/dev/null)
 grep -q 'j1 · 2/5 tasks' <<<"$frame" && pass "J2: classic frame and status --json agree on 2/5 tasks" || fail "J2: classic frame counts" "$frame"
