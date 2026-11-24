@@ -123,7 +123,8 @@ fi
 #               notification is an AskUserQuestion ("Claude question")
 #   STALLED     mid-work milestone, no status/report write for >=10 min; with an event log,
 #               measured WORKING with no event and no open tool for >=10 min. Both limits are
-#               _ST_GATE_STALL_MIN while the status file's last line says `gating <sha>`
+#               _ST_GATE_STALL_MIN while the status file's last line says `gating <sha>`,
+#               and then a measured IDLE or ENDED past that limit is STALLED too
 #   GATING      the status file's last line says `gating <sha>`: inside a no-mistakes gate,
 #               which waits on a review or CI for long silent stretches (wins over IDLE)
 #   IDLE        no report on disk and the event log measures IDLE or ENDED (never STALLED),
@@ -416,7 +417,8 @@ _st_row() {
   # Measured state from the plugin's event log (live rows only: a finished teammate's log is
   # history). It wins over the silence and notification inference above, under tmux too:
   # stalled? needs 10 min with no event and no tool still running (a long tool or hook is not
-  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?),
+  # a stall), idle comes from Stop/idle_prompt/SessionEnd (a measured idle is never stalled?, except
+  # while gating: an idle turn past the gate limit means the gate is over or abandoned),
   # waiting only from an open AskUserQuestion, and a permission request is its own state.
   local evs=- eva=- evt=- perm='' _ev
   if [ -z "$fin" ] && [ -n "$effective_run" ] && _ev=$(_st_events "$effective_run/events/$role.jsonl" "$(date +%s)") && [ -n "$_ev" ]; then
@@ -429,7 +431,8 @@ _st_row() {
     # An open AskUserQuestion is a wait on the user even where no notification says so (tmux).
     [ "$evt" = AskUserQuestion ] && [ -z "${skip_waiting:-}" ] && waiting=1
     case $ms in spawned|investigating|drafting)
-      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1 ;;
+      [ "$evs" = WORKING ] && [ "$evt" = - ] && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1
+      [ "$gate" != - ] && { [ "$evs" = IDLE ] || [ "$evs" = ENDED ]; } && [ "$eva" -ge $((stall_min * 60)) ] && stalled=1 ;;
     esac
   fi
 

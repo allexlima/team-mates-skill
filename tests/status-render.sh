@@ -671,6 +671,13 @@ rm -f "$RUNN/events/q.jsonl"
 { [ "$got" = "GATING|abc1234" ] && [ "${got2%%|*}" = STALLED ]; } \
   && pass "N13: with an event log 20m silent, gating stays GATING and a plain step goes STALLED" \
   || fail "N13: event-log gate threshold" "gating=[$got] plain=[$got2]"
+# A gating teammate whose turn ended (Stop) stays GATING inside the limit and stalls past it.
+printf '{"t":%s,"ev":"Stop"}\n' "$(( $(date +%s) - 20 * 60 ))" > "$RUNN/events/q.jsonl"; got=$(grow 'T5: gating abc1234' 0)
+printf '{"t":%s,"ev":"Stop"}\n' "$(( $(date +%s) - 50 * 60 ))" > "$RUNN/events/q.jsonl"; got2=$(grow 'T5: gating abc1234' 0)
+rm -f "$RUNN/events/q.jsonl"
+{ [ "$got" = "GATING|abc1234" ] && [ "$got2" = "STALLED|abc1234" ]; } \
+  && pass "N13: a gating teammate idle 20m stays GATING and idle 50m goes STALLED" \
+  || fail "N13: idle gate threshold" "20m=[$got] 50m=[$got2]"
 
 # ---------------------------------------------------------------------------
 # AC*  the monitor closes itself once every teammate is finished
